@@ -178,7 +178,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 
 All addresses refer to the stock RC2 kernel built 2017-11-07 (firmware 1.8.2, sha256
 `47a13cf3bf642c7daf8ab1b3716db56fae7d1b85f7b4e552bdb97edd062030af`), which is not public. The public 1.9.1 update carries a 2019-11-05
-kernel. Checked against it: every symbol named in these notes exists there, but many have moved (board file: 59 of 102 at the same
+kernel. Checked against it: every symbol in the tool lists exists there, but many have moved (board file: 59 of 102 at the same
 address, 42 moved by −0x34 … +0x23e8; PM: 43 of 57 same, 13 moved), so **use the symbol names, not the addresses**, with that
 kernel. Real code changes are only in `machine_rk30_board_init` (1468 → 1488 bytes) and `rk30_adc_ebc_battery_check`
 (1004 → 912 bytes); the other functions differ by at most a few relocated words. The EBC driver span is unchanged and at the same
