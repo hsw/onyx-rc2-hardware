@@ -7,9 +7,9 @@ evidence comes from earlier captures on the same unit. The ONYX board source is 
 E-Ink SDK board `arch/arm/mach-rk3026/board-rk3026-ebook.c` in [rychly/rk3026-linux-sources](https://github.com/rychly/rk3026-linux-sources)
 (**RY** below).
 
-All addresses refer to that 2017-11-07 kernel. The public firmware update (1.9.1, see the top-level README) carries a 2019-11-05
-kernel; whether the board-file function addresses match there is [VERIFY] (the EBC driver span was checked and matches; the board
-code was not).
+All addresses refer to that 2017-11-07 kernel. The public firmware update (1.9.1, see the top-level README) carries a 2019-11-05 kernel. Checked against it: all 102 board-file symbols exist there, 59 at the same address and 42 moved
+(by −0x34 … +0x23e8), so **use the symbol names, not the addresses**, with that kernel. Real code changes: only
+`machine_rk30_board_init` (1468 → 1488 bytes); the other functions differ by at most one relocated word.
 
 Scope: the board span 0xc045de28–0xc045f4cc, the init-section board code 0xc040e264–0xc040ecc0 (`rk30_reserve`, the two `__setup`
 handlers, `machine_rk30_board_init`, `last_log_init`), the board's `.data`/`.init.data` (platform devices and platform data, read

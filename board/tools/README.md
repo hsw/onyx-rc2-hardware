@@ -13,9 +13,9 @@ Static-analysis helpers used for [`../README.md`](../README.md). They only read 
 Inputs (not in this repository):
 - **IMAGE**: the raw (uncompressed) stock RC2 kernel Image. All addresses in these tools and in the README refer to the stock RC2
   kernel built 2017-11-07 (firmware 1.8.2, sha256 `47a13cf3bf642c7daf8ab1b3716db56fae7d1b85f7b4e552bdb97edd062030af`), which is
-  not public. The public firmware update (1.9.1, from the ONYX support page linked in the top-level README) carries a 2019-11-05
-  kernel; whether the board-file function addresses match there is [VERIFY] (the EBC driver span was checked and matches; the board
-  code was not). `run.sh` checks the sha256 and refuses another Image.
+  not public. The public firmware update (1.9.1, from the ONYX support page linked in the top-level README) carries a 2019-11-05 kernel. Checked against it: all 102 board-file symbols exist there, 59 at the same address and 42 moved
+  (by −0x34 … +0x23e8), so **use the symbol names, not the addresses**, with that kernel. Real code changes: only
+  `machine_rk30_board_init` (1468 → 1488 bytes); the other functions differ by at most one relocated word. `run.sh` checks the sha256 and refuses another Image.
 - **KALLSYMS**: `python3 -I ../../kernel/extract_kallsyms.py IMAGE kallsyms.txt` (format: `VA type name` per line).
 - Env: `OBJDUMP` (GNU objdump with ARM support; default `objdump`), `RY_IOMUX` (optional path to `arch/arm/mach-rk3026/include/mach/iomux.h`
   of [rychly/rk3026-linux-sources](https://github.com/rychly/rk3026-linux-sources), for iomux names), `GHIDRA_HEADLESS`, `JAVA_HOME`.
