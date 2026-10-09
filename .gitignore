@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.bin
+*.img
+*.zip
+.DS_Store
+zImage
+Image
+kallsyms*.txt

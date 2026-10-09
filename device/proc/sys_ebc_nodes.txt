@@ -1,0 +1,11 @@
+/sys/devices/platform/rk29-ebc.0
+/sys/devices/platform/rk29-ebc.0/ebc_dbg
+/sys/devices/virtual/ebc_class
+/sys/devices/virtual/ebc_class/ebc
+/sys/bus/platform/devices/rk29-ebc.0
+/sys/bus/platform/drivers/rk29-ebc
+/sys/bus/platform/drivers/rk29-ebc/rk29-ebc.0
+/sys/bus/spi/drivers/epd_spi_flash
+/sys/bus/i2c/drivers/tps65185
+/sys/class/ebc_class
+/sys/class/ebc_class/ebc

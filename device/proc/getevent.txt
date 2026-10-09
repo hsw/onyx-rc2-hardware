@@ -1,0 +1,21 @@
+add device 1: /dev/input/event0
+  name:     "rk29-keypad"
+  events:
+    KEY (0001): KEY_F1                KEY_PAGEUP            KEY_PAGEDOWN          KEY_POWER            
+                KEY_WAKEUP            KEY_BACK             
+  input props:
+    <none>
+add device 2: /dev/input/event1
+  name:     "cyttsp4_mt"
+  events:
+    ABS (0003): ABS_MT_SLOT           : value 0, min 0, max 31, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MINOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_ORIENTATION    : value 0, min 65408, max 127, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 1447, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 1071, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOOL_TYPE      : value 0, min 0, max 1, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+                ABS_MT_PRESSURE       : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT

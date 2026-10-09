@@ -1,0 +1,63 @@
+# Functions dumped by run.sh (kdis.py listings -> OUTDIR/fn/<name>.s)
+# kernel/power
+state_show
+state_store
+valid_state
+request_suspend_state
+get_suspend_state
+suspend
+suspend_devices_and_enter
+pm_irqwake_enable
+pm_irqwake_disable
+suspend_valid_idle_mem
+suspend_irqwake_set
+idle_proc_write
+idle_proc_read
+idle_init
+stop_drawing_early_suspend
+suspend_time_syscore_resume
+# mach-rk3026/pm.c
+rk3026_pm_init
+set_logic_suspend_volt
+set_arm_suspend_volt
+pm_suspend_volt_seting
+early_param_rk_soc_pm_ctr
+rk3026_pm_finish
+rk3026_pm_dump_irq
+rk3026_pm_prepare
+pm_pll_pwr_up
+rk_soc_pm_helps_printk
+rk_soc_pm_ctr_bits_check
+rk_soc_pm_ctr_bits_prepare
+interface_ctr_reg_pread
+rk3026_suspend
+rk3026_pm_enter
+rk29_sram_init
+sram_gpio_init
+rk30_cpuidle_init
+# idle-aware drivers (get_suspend_state users)
+rk29_bl_suspend
+rk29_bl_resume
+papyrus_pm_sleep
+rk29_keys_early_suspend
+cyttsp4_ts_early_suspend
+keys_suspend
+# charger / battery / rtc
+act8931_charge_timer_callback
+act8931_charge_charge_output
+act8931_charge_level_reset
+act8931_charge_charge_level_get
+act8931_charge_init
+act8931_charge_set_vbus_status
+act8931_charge_charge_level_set
+cw_init
+bat_low_detect_irq_handler
+bat_low_detect_do_wakeup
+rk30_adc_battery_get_bat_vol
+rk30_adc_ebc_battery_check
+cw_disable_batt_low_irq
+hym8563_disable_alarm
+alarm_suspend
+# ddrfreq
+ddrfreq_late_init
+ddrfreq_clk_event

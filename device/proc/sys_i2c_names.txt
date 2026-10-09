@@ -1,0 +1,10 @@
+/sys/bus/i2c/devices/0-0051: rtc_hym8563
+/sys/bus/i2c/devices/0-005b: act8931
+/sys/bus/i2c/devices/0-0062: cw201x
+/sys/bus/i2c/devices/2-0024: cyttsp4_i2c_adapter
+/sys/bus/i2c/devices/2-005d: Goodix-TS
+/sys/bus/i2c/devices/2-0068: tps65185
+/sys/bus/i2c/devices/i2c-0: rk30_i2c
+/sys/bus/i2c/devices/i2c-1: rk30_i2c
+/sys/bus/i2c/devices/i2c-2: rk30_i2c
+/sys/bus/i2c/devices/i2c-3: rk30_i2c

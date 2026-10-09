@@ -1,0 +1,1 @@
+Linux version 3.0.36+ (jenkins@jim-hp-workstation-15) (gcc version 4.6.x-google 20120106 (prerelease) (GCC) ) #1 SMP PREEMPT Tue Nov 7 21:44:55 CST 2017

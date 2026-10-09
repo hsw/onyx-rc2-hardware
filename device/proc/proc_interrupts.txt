@@ -1,0 +1,46 @@
+           CPU0       CPU1       
+ 32:       8379          0       GIC  rk29-pl330
+ 33:          0          0       GIC  rk29-pl330
+ 35:        490          0       GIC  mali_gp_irq_handlers
+ 36:          0          0       GIC  mali_mmu_irq_handlers, mali_mmu_irq_handlers, mali_mmu_irq_handlers
+ 37:        623          0       GIC  mali_pp_irq_handlers, mali_pp_irq_handlers
+ 38:          0          0       GIC  vepu
+ 39:          0          0       GIC  vdpu
+ 41:          0          0       GIC  rk30-lcdc.0
+ 42:      15408          0       GIC  dwc_otg, dwc_otg_hcd:usb1, dwc_otg_pcd
+ 43:          0          0       GIC  dwc_otg, host20_hcd:usb2
+ 46:          0          0       GIC  rk29_sdmmc.0
+ 47:          0          0       GIC  rk29_sdmmc.1
+ 48:      25235          0       GIC  emmc
+ 49:         11          0       GIC  rk30-adc
+ 50:          0          0       GIC  nandc
+ 55:         21          0       GIC  rk29xx_spim
+ 56:      28521          0       GIC  rk30_i2c.0
+ 57:          0          0       GIC  rk30_i2c.1
+ 58:      11986          0       GIC  rk30_i2c.2
+ 59:          0          0       GIC  rk30_i2c.3
+ 60:      38074          0       GIC  rk_timer0
+ 67:          0          0       GIC  bvalid
+ 76:          0          0       GIC  rga
+ 81:        179          0       GIC  rk29-ebc
+ 83:          0          0       GIC  otg-id
+127:       2819          0       GIC  debug-signal
+160:        350          0      GPIO  main_ttsp_core.cyttsp4_i2c_adapter
+164:          0          0      GPIO  play
+168:         22          0      GPIO  magic_int
+169:          0          0      GPIO  bat_low_detect
+171:          0          0      GPIO  rtc_hym8563
+195:          0          0      GPIO  sd_detect
+205:          0          0      GPIO  pageup
+206:          0          0      GPIO  pagedown
+211:          0          0      GPIO  esc
+235:          0          0      GPIO  adc_irq_io
+FIQ:              fiq_glue
+IPI0:          0          0  Timer broadcast interrupts
+IPI1:      10701      12740  Rescheduling interrupts
+IPI2:          0          0  Function call interrupts
+IPI3:         52         80  Single function call interrupts
+IPI4:          0          0  CPU stop interrupts
+IPI5:          0          0  CPU backtrace
+LOC:          0      12756  Local timer interrupts
+Err:          0

@@ -1,0 +1,6 @@
+rtk_btusb 27799 0 - Live 0x00000000
+vpu_service 11967 0 - Live 0x00000000
+rk29_ipp 9957 0 - Live 0x00000000 (C)
+mali 113669 4 - Live 0x00000000
+ump 27320 9 mali, Live 0x00000000
+rk30xxnand_ko 174424 0 - Live 0x00000000
