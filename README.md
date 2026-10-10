@@ -20,6 +20,7 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 | SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3). The stock DVFS table has one point: **912 MHz at 1.40 V** | [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
 | RAM | 512 MiB DDR3 (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3 |
 | Panel | 6", **1448×1072**. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
+| Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
 | E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
 | System PMIC | Active-Semi **ACT8931** @ i2c0 0x5b, no IRQ | [`board/README.md`](board/README.md) §2 |
 | E-Ink PMIC | TI **TPS65185** @ i2c2 0x68 (`TPS65185r1p2`) | below |
@@ -114,8 +115,8 @@ SDCK/GDCK timing), and the panel datasheet itself. `gdck_sta` and `lgonl` are us
 | Temperature | from the PMIC; `/proc/epdsensor` prints it; `onyx_misc` `pmic_temp` always prints "25" |
 
 **VCOM.**
-- The panel's own SPI flash (read at boot through `spi_ctl_pins_enable`, panel strings at flash offset 0x70000, shown in
-  `/proc/panel_info`) holds: part **ED060KD1U7**, **VCOM −2.06 V**, waveform `320_R177_AE6A41_ED060KD1U7_TC` [CONFIRMED log].
+- The panel's own SPI flash ([`panel-flash/README.md`](panel-flash/README.md); read at boot through `spi_ctl_pins_enable`, panel
+  strings at flash offset 0x70000, shown in `/proc/panel_info`) holds: part **ED060KD1U7**, **VCOM −2.06 V**, waveform `320_R177_AE6A41_ED060KD1U7_TC` [CONFIRMED log].
 - The PMIC's VCOM EEPROM on this unit holds **166** (`tps65185_probe vcomvalue = 166` in dmesg), read as 1.66 V in 10 mV units by
   the EBC-driver analysis. The board-file pass left the unit as [VERIFY].
 - The stock kernel never writes VCOM at power-up: the panel always runs on the PMIC EEPROM value. The only automatic writer is a
@@ -174,6 +175,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) | what the stock kernel has beyond the public Rockchip 3.0 tree; DVFS table |
 | [`kernel/config-reconstruction.md`](kernel/config-reconstruction.md) | the stock kernel configuration reconstructed from the Image |
 | [`kernel/extract_kallsyms.py`](kernel/extract_kallsyms.py), [`kernel/sysfs_attrs.py`](kernel/sysfs_attrs.py) | recover kallsyms from a raw Image; list compiled-in sysfs attributes |
+| [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, layout, passport encoding, what the stock kernel reads, R177 vs R110, read tools |
 | [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, image formats, ramdisk, raw `/proc` and sysfs excerpts |
 
 All addresses refer to the stock RC2 kernel built 2017-11-07 (firmware 1.8.2, sha256
@@ -200,7 +202,7 @@ Each document states its exact rule at the top; the power document also counts a
 
 ## About this work
 
-Not affiliated with ONYX or Rockchip. This came out of porting Android 4.4 to the RC2 on its stock kernel. The analysis was done with an AI coding assistant (Claude); results were checked on the hardware where marked [CONFIRMED]. Reverse engineering was done for interoperability. This repository describes the hardware and the vendor kernel's board code; it contains no vendor code or binaries. Code: MIT (`LICENSE`). Text: CC BY 4.0.
+Not affiliated with ONYX or Rockchip. This came out of porting Android 4.4 to the RC2 on its stock kernel. The analysis was done with an AI coding assistant (Claude); results were checked on the hardware where marked [CONFIRMED]. Reverse engineering was done for interoperability. This repository describes the hardware and the vendor kernel's board code; it contains no vendor code or binaries. Code: MIT (`LICENSE`), except the kernel module `panel-flash/tools/rc2spidump.c` (GPL-2.0). Text: CC BY 4.0.
 
 The board code and the EBC driver are part of the vendor's GPLv2 kernel, which ONYX distributes without source; see
 [SOURCE-AVAILABILITY.md](https://github.com/hsw/onyx-rc2-ebc/blob/main/SOURCE-AVAILABILITY.md) in onyx-rc2-ebc.
