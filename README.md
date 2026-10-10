@@ -20,6 +20,7 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 | SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3). The stock DVFS table has one point: **912 MHz at 1.40 V** | [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
 | RAM | 512 MiB DDR3 (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3 |
 | Panel | 6", **1448×1072**. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
+| BootROM | 16 KB mask ROM: boots **microSD first** (SD → NAND → SPI → eMMC → USB), falls through on a bad card, never writes storage | [`bootrom/README.md`](bootrom/README.md) |
 | Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
 | E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
 | System PMIC | Active-Semi **ACT8931** @ i2c0 0x5b, no IRQ | [`board/README.md`](board/README.md) §2 |
@@ -175,6 +176,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) | what the stock kernel has beyond the public Rockchip 3.0 tree; DVFS table |
 | [`kernel/config-reconstruction.md`](kernel/config-reconstruction.md) | the stock kernel configuration reconstructed from the Image |
 | [`kernel/extract_kallsyms.py`](kernel/extract_kallsyms.py), [`kernel/sysfs_attrs.py`](kernel/sysfs_attrs.py) | recover kallsyms from a raw Image; list compiled-in sysfs attributes |
+| [`bootrom/README.md`](bootrom/README.md), [`bootrom/tools/`](bootrom/tools/) | the RK3026 BootROM: media order, SD init and the OCR bug, IDBlock/RC4 handling, secure-boot gate, fallback, a safe SD test |
 | [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, layout, passport encoding, what the stock kernel reads, R177 vs R110, read tools |
 | [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, image formats, ramdisk, raw `/proc` and sysfs excerpts |
 
@@ -202,7 +204,7 @@ Each document states its exact rule at the top; the power document also counts a
 
 ## About this work
 
-Not affiliated with ONYX or Rockchip. This came out of porting Android 4.4 to the RC2 on its stock kernel. The analysis was done with an AI coding assistant (Claude); results were checked on the hardware where marked [CONFIRMED]. Reverse engineering was done for interoperability. This repository describes the hardware and the vendor kernel's board code; it contains no vendor code or binaries. Code: MIT (`LICENSE`), except the kernel module `panel-flash/tools/rc2spidump.c` (GPL-2.0). Text: CC BY 4.0.
+Not affiliated with ONYX or Rockchip. This came out of porting Android 4.4 to the RC2 on its stock kernel. The analysis was done with an AI coding assistant (Claude); results were checked on the hardware where marked [CONFIRMED]. Reverse engineering was done for interoperability. This repository describes the hardware and the vendor kernel's board code; it contains no vendor code or binaries (the BootROM is described, not included). Code: MIT (`LICENSE`), except the kernel module `panel-flash/tools/rc2spidump.c` (GPL-2.0). Text: CC BY 4.0.
 
 The board code and the EBC driver are part of the vendor's GPLv2 kernel, which ONYX distributes without source; see
 [SOURCE-AVAILABILITY.md](https://github.com/hsw/onyx-rc2-ebc/blob/main/SOURCE-AVAILABILITY.md) in onyx-rc2-ebc.
