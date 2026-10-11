@@ -17,21 +17,22 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 
 | Part | What | Where documented |
 |---|---|---|
-| SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3). The stock DVFS table has one point: **912 MHz at 1.40 V** | [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
-| RAM | 512 MiB DDR3 (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3 |
+| SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3), PL310 L2 256 KiB. The stock DVFS table has one point: **912 MHz at 1.40 V**. PLLs on the running device: APLL 912, DPLL 792, CPLL 640, GPLL 768 MHz | [`soc/README.md`](soc/README.md) (MMIO, IRQs, CRU, GRF, pins), [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
+| RAM | 512 MiB DDR3, **one rank** (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3, [`soc/README.md`](soc/README.md) §6 |
 | Panel | 6", **1448×1072**. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
 | BootROM | 16 KB mask ROM: boots **microSD first** (SD → NAND → SPI → eMMC → USB), falls through on a bad card, never writes storage | [`bootrom/README.md`](bootrom/README.md) |
 | Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
-| E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
-| System PMIC | Active-Semi **ACT8931** @ i2c0 0x5b, no IRQ | [`board/README.md`](board/README.md) §2 |
-| E-Ink PMIC | TI **TPS65185** @ i2c2 0x68 (`TPS65185r1p2`) | below |
+| E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 (`GIC_SPI 49`), `dclk_ebc` 160 MHz from CPLL | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
+| System PMIC | Active-Semi **ACT8931** @ i2c0 0x5b, no IRQ. VCCIO 3.4 V, LDOs 3.1 V (the stock kernel reports 3.3 V / 3.0 V: its voltage table is off by one) | [`pmic/README.md`](pmic/README.md) §1, [`board/README.md`](board/README.md) §2 |
+| E-Ink PMIC | TI **TPS65185** @ i2c2 0x68 (`TPS65185r1p2`) | below; [`pmic/README.md`](pmic/README.md) §2 |
 | Touch | Cypress **cyttsp4** (TrueTouch Gen4) @ i2c2 0x24; a Goodix driver @ i2c2 0x5d is registered as an alternative and is absent | [`board/README.md`](board/README.md) §3 |
 | Wi-Fi / BT | Realtek **RTL8723BU** on USB (`0bda:b720`), one power GPIO for both | [`board/README.md`](board/README.md) §4 |
 | Storage | eMMC, Samsung, 7456 MB, used through Rockchip's MTD layer (`rk29xxnand`, `onyx_emmc=1`) | [`device/README.md`](device/README.md) |
 | microSD | MMC0, supply ACT8931 LDO3, card-detect GPIO2_A3 | [`board/README.md`](board/README.md) §3 |
 | Keys | power, page up, page down, back on GPIOs; two ADC keys in the table (`ok`, `menu`), probably not fitted | below |
 | Frontlight | PWM0 (GPIO0_D2), active high, no enable GPIO | below |
-| Battery | Li-ion, **CW2015** fuel gauge @ i2c0 0x62; USB-only charging | [`board/README.md`](board/README.md) §3, [`power/README.md`](power/README.md) §3 |
+| Battery | Li-ion, **CW2015** fuel gauge @ i2c0 0x62; USB-only charging (the ACT8931's own charger) | [`board/README.md`](board/README.md) §3, [`power/README.md`](power/README.md) §3, [`pmic/README.md`](pmic/README.md) |
+| Mainline Linux | nothing for RK3026 in v7.2; per-block status and what is missing | [`mainline/README.md`](mainline/README.md) |
 | RTC | HYM8563 @ i2c0 0x51, IRQ GPIO1_B3 | [`board/README.md`](board/README.md) §3 |
 | Other | vibration motor (GPIO0_A2), status LED (GPIO2_B7), magnet (Hall) sensor that acts as POWER (GPIO1_B0), SoC audio codec without speaker or jack on V1.73 | [`board/README.md`](board/README.md) §6, §8 |
 
@@ -41,24 +42,34 @@ GPIO numbering in the vendor kernel: `gpio = 128 + 32*bank + 8*port + pin` (160 
 the identity [STRONG]. Pins and the per-pcb differences are in [`board/README.md`](board/README.md) §1 and §5; the bullets below are
 copied from its DTS section with the confidence of the underlying pin-table rows.
 
-- PMIC ACT8931 @ i2c0 0x5b (no IRQ). DCDC1 VCCIO 3.3 V (3.4 V with Wi-Fi), DCDC2 DDR 1.35 V, DCDC3 ARM, LDO1 touch 3.0 V,
-  LDO3 SD 3.0 V, LDO4 EPD logic 3.0 V, LDO2 unused. Power hold GPIO1_A2 (active high); GPIO0_A3 driven high (VSEL?).
-  [CONFIRMED values from the boot log; STRONG power hold; GUESS VSEL]
+- PMIC ACT8931 @ i2c0 0x5b (no IRQ). Read from the chip ([`pmic/README.md`](pmic/README.md)): DCDC1 VCCIO **3.4 V** (3.5 V with
+  Wi-Fi), DCDC2 DDR 1.35 V, DCDC3 ARM 1.40 V, LDO1 touch **3.1 V**, LDO3 SD **3.1 V**, LDO4 EPD logic **3.1 V** (off between
+  updates), LDO2 unused (off). The stock kernel prints 3.3 V / 3.4 V / 3.0 V for the same registers because its voltage table has an
+  extra 2850 mV entry; a DTS that copies stock's numbers lowers these rails by 100 mV. VSEL = GPIO0_A3, driven high, so the live bank
+  is VSET2: use `active-semi,vsel-high`. DCDC1–3 `regulator-always-on`; LDO4 consumer-controlled. Power hold GPIO1_A2 (active high).
+  [CONFIRMED register values on the device; STRONG power hold and VSEL]
 - Fuel gauge CW2015 @ i2c0 0x62, ALRT GPIO1_B1 active low (pull-up); charge-current selects GPIO1_B2 and GPIO1_A1 (driven
   high); USB-only charging; no charge-done input on V1.73 (GPIO0_A2 on pcb 0/1). Battery profile: 64 bytes inline in the board data.
   [CONFIRMED address and ALRT IRQ; STRONG the rest]
 - RTC HYM8563 @ i2c0 0x51, IRQ GPIO1_B3. [CONFIRMED]
-- Touch cyttsp4 @ i2c2 0x24, IRQ GPIO1_A0 (V1.73+; GPIO1_B0 on older boards), reset GPIO0_D3 active low, supply LDO1 3.0 V,
-  X 0..758, Y 0..1024, flip + invert Y in the board platform data. Optional Goodix @ i2c2 0x5d on other panels. [CONFIRMED IRQ, reset
-  and supply by dmesg; the input device on the running system reports X 0..1447, Y 0..1071, 32 slots ([`device/proc/getevent.txt`](device/proc/getevent.txt))]
-- EPD PMIC TPS65185 @ i2c2 0x68, WAKEUP GPIO3_C1, VCOM_CTRL on GPIO2_C0 (EBC_VCOM function), no PWRUP GPIO; PWR_GOOD/nINT are not
-  in the board data [STRONG; PG/nINT wiring VERIFY]. VCOM: see below.
+- Touch cyttsp4 @ i2c2 0x24, IRQ GPIO1_A0 (V1.73+; GPIO1_B0 on older boards), reset GPIO0_D3 active low, supply LDO1,
+  flip + invert Y in the board platform data. Optional Goodix @ i2c2 0x5d on other panels. The axes come from the controller: the
+  input device reports X 0..1447, Y 0..1071, 32 slots ([`device/proc/getevent.txt`](device/proc/getevent.txt), read again
+  2026-10-11); the platform data's X 0..758, Y 0..1024 is an unused template. [CONFIRMED IRQ, reset and supply by dmesg; axes
+  CONFIRMED on the device]
+- EPD PMIC TPS65185 @ i2c2 0x68, WAKEUP GPIO3_C1 (held high by stock), VCOM_CTRL on GPIO2_C0 (EBC_VCOM function), no PWRUP
+  GPIO; PWR_GOOD/nINT are not in the board data and stock requests no such GPIO [STRONG; PG/nINT wiring VERIFY]. The PG register
+  is readable at idle, so polling it works; mainline's driver currently requires `pwr-good-gpios`
+  ([`mainline/README.md`](mainline/README.md)). VIN is not LDO4: the chip answers while LDO4 is off, so `vin-supply` is an
+  always-on rail [STRONG]. VCOM: see below.
 - EBC pins: SDCLK GPIO2_B0, SDLE B1, GDCLK B3, GDOE C1, GDSP C2, GDPWR1 D0, GDPWR2 D1, VCOM C0. SDOE/SDCE2–5/GDPWR0 are *not*
   used for the panel. [STRONG]
 - Panel SPI flash on SPI0 (GPIO1_B0..B3, 6 MHz), gated by GPIO2_B2 high. These pins are shared with interrupt lines
   (magnet, CW2015 ALRT, charge-select, RTC), so a DTS needs a pinctrl state switch, not a permanent SPI mux. [CONFIRMED]
-- Keys: power GPIO1_A4, page up GPIO2_B5, page down GPIO2_B6, back GPIO2_C3 (all active low, wakeup). ADC keys on SARADC
-  channel 3 (ok ≈ 505, menu ≈ 400 of 1023; may not be fitted), ADC-key IRQ GPIO3_B3. [CONFIRMED GPIO keys; VERIFY ADC keys fitted]
+- Keys: power GPIO1_A4, page up GPIO2_B5, page down GPIO2_B6, back GPIO2_C3 (all active low, wakeup). Stock disables the internal
+  pull on all four and on the cover sensor GPIO1_B0, and the lines idle high: external pull-ups, DTS `bias-disable`. ADC keys on
+  SARADC channel 3 (ok ≈ 505, menu ≈ 400 of 1023; may not be fitted; the datasheet gives the RK3026 only two ADC channels),
+  ADC-key IRQ GPIO3_B3. [CONFIRMED GPIO keys and pulls; VERIFY ADC keys fitted]
 - Magnet sensor GPIO1_B0, falling edge (→ `gpio-keys` KEY_POWER or SW_LID) [CONFIRMED IRQ; hardware VERIFY]. Vibrator GPIO0_A2
   active low [CONFIRMED motor fitted]. Status LED GPIO2_B7 active high [STRONG]. Frontlight PWM0 (GPIO0_D2), active high, no enable
   GPIO [STRONG].
@@ -70,7 +81,13 @@ copied from its DTS section with the confidence of the underlying pin-table rows
 - Memory the vendor kernel reserves (`rk30_reserve`, [CONFIRMED dmesg]): `ebc buf` (waveform) 1 MiB at 0x7ff00000 (`waveform_addr=`
   from the loader), `ebc disp buf` 8 MiB at 0x7f700000, `fb0 buf` 18 MiB at 0x7e500000, ION carveout 20 MiB at 0x7d100000.
 - Interrupts in the vendor kernel's numbering ([`device/proc/proc_interrupts.txt`](device/proc/proc_interrupts.txt)): EBC 81, LCDC 41
-  (never fires: the LCDC does not scan out on this board), i2c0..3 56..59, SARADC 49, `bvalid` 67, `otg-id` 83.
+  (never fires: the LCDC does not scan out on this board), i2c0..3 56..59, SARADC 49, `bvalid` 67, `otg-id` 83. The vendor number is
+  the GIC interrupt ID, so in a DTS use `GIC_SPI (n − 32)`: EBC `GIC_SPI 49`, bvalid 35, otg-id 51 [STRONG]. Full table in
+  [`soc/README.md`](soc/README.md) §2.
+- SoC side for the DTS ([`soc/README.md`](soc/README.md)): MMIO map (TIMER1 is at 0x20044020, not 0x20046000); the EBC data lines
+  SDDO0–7/SDCE0–1 reach the pads only through `GRF_LVDS_CON0` bit 0; I2C controller select in `GRF_SOC_CON1` bits 11–14; reboot
+  flags in `GRF_OS_REG4/5` (the values of mainline `syscon-reboot-mode`); CPU1 via `rockchip,rk3036-smp` after the loader's IMEM
+  remap. What exists in mainline and what is missing: [`mainline/README.md`](mainline/README.md).
 
 ## Panel timings
 
@@ -108,8 +125,9 @@ SDCK/GDCK timing), and the panel datasheet itself. `gdck_sta` and `lgonl` are us
 | | |
 |---|---|
 | Bus | i2c2 0x68, 400 kHz, chip `TPS65185r1p2` [CONFIRMED log] |
-| Pins | WAKEUP GPIO3_C1; VCOM_CTRL on GPIO2_C0, which is muxed to the EBC_VCOM function while the panel is powered; PWRUP not connected (`pwr_up_pin = -1`); PWR_GOOD / nINT not in the board data [VERIFY] |
-| Logic supply | ACT8931 LDO4 3.0 V (`act_ldo4`), switched on/off by the board's `ebc_power_on/off` with no delays (RY used 1.8 V) [CONFIRMED value, STRONG consumer] |
+| Pins | WAKEUP GPIO3_C1 (high at idle); VCOM_CTRL on GPIO2_C0, which is muxed to the EBC_VCOM function while the panel is powered and is a GPIO output high at idle; PWRUP not connected (`pwr_up_pin = -1`); PWR_GOOD / nINT not in the board data and not requested by stock [VERIFY wiring] |
+| Logic supply | ACT8931 LDO4 (`act_ldo4`), **3.1 V** by the register (stock reports 3.0 V, see [`pmic/README.md`](pmic/README.md) §1.3), switched on/off by the board's `ebc_power_on/off` with no delays (RY used 1.8 V); off at idle [CONFIRMED value, STRONG consumer]. The chip's own VIN is not LDO4 [STRONG] |
+| Readback at idle | ENABLE 0x20 (3V3 switch on), VADJ ±15 V, VCOM 0xA6 = 1.66 V, UPSEQ0/1 0x39/0x11, PG 0x00, REVID 0x65 [CONFIRMED]; table in [`pmic/README.md`](pmic/README.md) §2 |
 | Power-up | from the first power-up the driver overrides UPSEQ0/1 to **0x39/0x11** (public driver 0xE4/0x00); read with the TPS65185 register map: strobe order VDDH, VNEG, VEE, VPOS, delays 6/3/6/3 ms [STRONG]. Then ENABLE = 0x20 (3V3 only), 2 ms, ENABLE = 0xAF (all rails, ACTIVE); poll PG == 0xFA up to 30× at ~20 ms; on timeout STANDBY and retry after 200 ms, 3 attempts; a final failure is swallowed. Typical ≈25 ms [CONFIRMED by disassembly] |
 | Power-down | ENABLE = 0x6F (STANDBY, 3V3 kept), no wait |
 | Suspend | `support_tps_3v3_always_alive()` = 1: the PMIC stays in STANDBY with 3V3 on across system suspend |
@@ -157,10 +175,13 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 ## Asked for, not in our sources
 
 - The panel datasheet and the E Ink-terminology timing (see Panel timings).
-- TPS65185 PWR_GOOD / nINT wiring; the meaning of UPSEQ 0x39/0x11 against the ED060KD1 specification.
+- TPS65185 PWR_GOOD / nINT wiring (the PG register is readable, so a GPIO is not needed); the meaning of UPSEQ 0x39/0x11 against the
+  ED060KD1 specification.
 - The frontlight PWM frequency (only `pre_div = 0` → driver default 1000 is known).
 - Whether the `ok`/`menu` ADC keys and a Hall sensor are fitted on the RC2 shell (22 magnet IRQs on stock suggest the sensor is).
-- GPIO0_A3 as the ACT8931 VSEL pin, the role of GPIO2_B4 (`lcd_d10`) in suspend, the LED colours behind GPIO2_B7.
+- The role of GPIO2_B4 (`lcd_d10`) in suspend (probably a left-over touch reset of the Rockchip reference board, which resets its
+  touch controller on that pin) [STRONG], the LED colours behind GPIO2_B7. (GPIO0_A3 = ACT8931 VSEL is now [STRONG], see
+  [`pmic/README.md`](pmic/README.md) §1.4.)
 - A schematic. Everything here comes from the vendor kernel's board code and device observation.
 
 ## Repository map
@@ -179,6 +200,9 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`bootrom/README.md`](bootrom/README.md), [`bootrom/tools/`](bootrom/tools/) | the RK3026 BootROM: media order, SD init and the OCR bug, IDBlock/RC4 handling, secure-boot gate, fallback, a safe SD test |
 | [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, layout, passport encoding, what the stock kernel reads, R177 vs R110, read tools |
 | [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, image formats, ramdisk, raw `/proc` and sysfs excerpts |
+| [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, interrupts (`GIC_SPI n−32`), CRU (PLLs measured, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1, pin mux and pulls, datasheet contradictions resolved |
+| [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, the TPS65185 sequence and PG, DTS consequences |
+| [`mainline/README.md`](mainline/README.md) | mainline Linux v7.2 status per block and per board chip: what exists, what is missing, a sensible order |
 
 All addresses refer to the stock RC2 kernel built 2017-11-07 (firmware 1.8.2, sha256
 `47a13cf3bf642c7daf8ab1b3716db56fae7d1b85f7b4e552bdb97edd062030af`), which is not public. The public 1.9.1 update carries a 2019-11-05

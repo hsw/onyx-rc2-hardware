@@ -376,7 +376,8 @@ python3 -I tools/kwords.py $IMG c08c4be8:4 c0a6e0e4:9 c0a6e108:20 c0a7167c:66   
 
 ## Still [VERIFY]
 
-- GPIO0_A3 as ACT8931 VSEL, the purpose of GPIO2_B4 (`lcd_d10`) in sleep, and why LDO2 is switched on in mem ([`../board/README.md`](../board/README.md)).
+- The purpose of GPIO2_B4 (`lcd_d10`) in sleep, and why LDO2 is switched on in mem ([`../board/README.md`](../board/README.md)). GPIO0_A3 as
+  ACT8931 VSEL is now [STRONG] ([`../pmic/README.md`](../pmic/README.md) §1.4).
 - The effect of CLKSEL10 (PERI HCLK div) never being restored after suspend.
 - `cw_disable_batt_low_irq` use in `spi_ctl_pins_enable`.
 - Device test of manual `echo idle > /sys/power/state`: wake by touch, page keys, ADC keys (`ok`/`menu`) and Power; image kept.

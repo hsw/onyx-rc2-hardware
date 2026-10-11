@@ -128,6 +128,11 @@ Regulator table (`act8931_dcdc_info` in .data at 0xc0a710b4, `act8931_ldo_info` 
 
 Regulator constraints are 0.6–3.9 V for all rails (`ACT_*` init data at 0xc0a7297c…).
 
+**The values in this section are what the stock kernel believes, not what the chip outputs.** The stock driver's voltage table has
+an extra 2850 mV entry, so for every set-point at or above 2.85 V the real output is 100 mV higher than printed: VCCIO is **3.4 V**
+(3.5 V with Wi-Fi), the LDOs set to "3.0 V" are **3.1 V**, the suspend VCCIO "2.9 V" is 3.0 V. DDR, ARM and the 2.8 V set-points
+are unaffected. Confirmed by reading the registers on the device (2026-10-11): [`../pmic/README.md`](../pmic/README.md) §1.
+
 **VCCIO switching** (`onyx_vccio_set_voltage` @0xc045ebac): it sets DCDC1 to the requested value. On v17x a request ≤ 3.3 V is clamped
 to 3.3 V (`vccio should not lower than 3.3v`), and mdelay(20) follows every change. Callers:
 - `onyx_wifi_bt_module_power`: 3.4 V on the first user, 3.0 V (so 3.3 V on v17x) after the last;
@@ -154,7 +159,10 @@ The register writes are [STRONG]. The meaning is [VERIFY]: writing 0.85 V into t
 no restore on resume, only makes sense if VSET0 is the *sleep* set-point selected by a VSEL pin during the SRAM suspend. GPIO0_A3
 `pmu_gpio` driven high would then be VSEL. Supporting evidence: the ONYX SRAM pin helper at 0xfef014f0 drives GPIO0_A3 **low** (and
 GPIO2_B4 high) in suspend and reverses both on resume ([`../power/README.md`](../power/README.md) §1.2). So GPIO0_A3 = ACT8931 VSEL is
-[STRONG-GUESS]. Deep sleep and resume work on the device with this kernel, so the sequence is safe in practice. The SRAM-side voltage code
+[STRONG-GUESS]. Deep sleep and resume work on the device with this kernel, so the sequence is safe in practice. (Since then GPIO0_A3
+was read as an output driven high on the running system, and VSET1 = VSET2 before any suspend: GPIO0_A3 = VSEL and the live bank
+VSET2 are now [STRONG], [`../pmic/README.md`](../pmic/README.md) §1.4. Read with the datasheet curve, the writes above are 3.0 V,
+1.25 V, 2.8 V and 0.85 V.) The SRAM-side voltage code
 (`rk30_suspend_voltage_set/resume`) is documented in [`../power/README.md`](../power/README.md).
 
 `rk30_pwm_suspend_voltage_set` / `_resume_` are empty stubs (no PWM regulator). `board_gpio_suspend/resume` are the empty weak
@@ -389,13 +397,16 @@ cmdline for `onyx_emmc=1` [CONFIRMED].
 Mark: **[DTS]**. Each one is hardware wiring rather than vendor driver behaviour. The C67ML may differ: it is presumably another pcb
 revision of the same board (pcb_ver 0/1 vs 2/3), so the pcb table in §5 is the most useful thing to share.
 
-- [DTS] PMIC ACT8931 @ i2c0 0x5b (no IRQ). DCDC1 VCCIO 3.3 V (3.4 V with Wi-Fi), DCDC2 DDR 1.35 V, DCDC3 ARM, LDO1 touch 3.0 V,
-  LDO3 SD 3.0 V, LDO4 EPD logic 3.0 V, LDO2 unused. Power hold GPIO1_A2 (active high); GPIO0_A3 driven high (VSEL?).
+- [DTS] PMIC ACT8931 @ i2c0 0x5b (no IRQ). Real outputs (register readback, [`../pmic/README.md`](../pmic/README.md)): DCDC1 VCCIO
+  3.4 V (3.5 V with Wi-Fi), DCDC2 DDR 1.35 V, DCDC3 ARM 1.40 V, LDO1 touch 3.1 V, LDO3 SD 3.1 V, LDO4 EPD logic 3.1 V (off between
+  updates), LDO2 unused. Stock prints 3.3 / 3.4 / 3.0 V for these (table bug, §2). Power hold GPIO1_A2 (active high); GPIO0_A3 =
+  VSEL, driven high → `active-semi,vsel-high`.
 - [DTS] Fuel gauge CW2015 @ i2c0 0x62, ALRT GPIO1_B1 active low (pull-up); charge-current selects GPIO1_B2 and GPIO1_A1 (driven
   high); USB-only charging; no charge-done input on V1.73 (GPIO0_A2 on pcb 0/1). Battery profile: 64 bytes inline at 0xc0a71628 (extractable).
 - [DTS] RTC HYM8563 @ i2c0 0x51, IRQ GPIO1_B3.
-- [DTS] Touch cyttsp4 @ i2c2 0x24, IRQ GPIO1_A0 (V1.73+; GPIO1_B0 on older boards), reset GPIO0_D3 active low, supply LDO1 3.0 V,
-  X 0..758, Y 0..1024, flip + invert Y. Optional Goodix @ i2c2 0x5d on other panels.
+- [DTS] Touch cyttsp4 @ i2c2 0x24, IRQ GPIO1_A0 (V1.73+; GPIO1_B0 on older boards), reset GPIO0_D3 active low, supply LDO1,
+  X 0..758, Y 0..1024 in the platform data (unused: the controller reports X 0..1447, Y 0..1071), flip + invert Y. Optional
+  Goodix @ i2c2 0x5d on other panels.
 - [DTS] EPD PMIC TPS65185 @ i2c2 0x68, WAKEUP GPIO3_C1, VCOM_CTRL on GPIO2_C0 (EBC_VCOM function), no PWRUP GPIO. The panel flash of
   this RC2 stores VCOM −2.06 V; the PMIC reads back 166 (`read_vcom_mv`) [VERIFY units]. The EBC-driver analysis reads 166 as 1.66 V (10 mV units), which is 2.06 − 0.40 V,
   the driver's VCOM auto-fix rule ([onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc); summary in the top-level README).
@@ -521,7 +532,8 @@ tools/run.sh $IMG $SYMS <out-dir> <ghidra-work-dir>
 
 - Whether a Hall sensor is fitted (the vibration motor is, §8.3): test with `echo 200 > /sys/class/timed_output/vibrator/enable` and a magnet
   near the screen edge (`cat /proc/interrupts | grep magic`).
-- The ACT8931 suspend set-points: VSET0 versus VSEL, and the role of GPIO0_A3.
+- ~~The ACT8931 suspend set-points: VSET0 versus VSEL, and the role of GPIO0_A3.~~ Resolved: GPIO0_A3 = VSEL, live bank VSET2,
+  suspend values go to VSET1 ([`../pmic/README.md`](../pmic/README.md) §1.4) [STRONG].
 - tps65185 PWR_GOOD/nINT wiring (not in the board pdata; EBC-span driver).
 - The consumer of the SRAM flag cleared for pcb "3" (0xfef01cec), and the role of GPIO2_B4 (high in suspend).
 - Whether `ok`/`menu` ADC keys exist physically.

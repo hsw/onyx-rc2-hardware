@@ -16,7 +16,7 @@ marks are as in the [top README](../README.md#confidence-marks).
 | Pins | SPI0 CLK/TXD/RXD/CS0 on GPIO1_B0..B3, muxed to SPI only while the flash is read [CONFIRMED] |
 | Enable | GPIO2_B2 (the EBC_SDOE pin, reused) driven **high** during the access [CONFIRMED: dmesg `spi_ctl_pins_enable: enable =1/0`] |
 | Shared lines | GPIO1_B0 is the magnet-sensor IRQ, GPIO1_B1 the CW2015 ALRT, GPIO1_B2 a charge-current select, GPIO1_B3 the RTC IRQ. The stock code masks the fuel-gauge IRQ for the duration of the read [CONFIRMED] |
-| VCCIO | pcb 0 (V1.4/V1.6) lowers VCCIO to 1.8 V during the read; V1.73 keeps 3.3 V [STRONG] |
+| VCCIO | pcb 0 (V1.4/V1.6) lowers VCCIO to 1.8 V during the read; V1.73 keeps its normal VCCIO, which stock reports as 3.3 V and is really 3.4 V ([`../pmic/README.md`](../pmic/README.md) §1.3) [STRONG]. How a 1.8 V MX25U part is read at that level (a level shifter?) is [VERIFY] |
 
 The sequence is `spi_ctl_pins_enable()` in [`../board/README.md`](../board/README.md) §6; the SPI device is in §3. For a
 mainline device tree, use a `jedec,spi-nor` node on spi0 with two pinctrl states: GPIO by default, SPI only while the flash is read.
