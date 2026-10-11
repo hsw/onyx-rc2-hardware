@@ -19,7 +19,7 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 |---|---|---|
 | SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3), PL310 L2 256 KiB. The stock DVFS table has one point: **912 MHz at 1.40 V**. PLLs on the running device: APLL 912, DPLL 792, CPLL 640, GPLL 768 MHz | [`soc/README.md`](soc/README.md) (MMIO, IRQs, CRU, GRF, pins), [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
 | RAM | 512 MiB DDR3, **one rank** (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3, [`soc/README.md`](soc/README.md) §6 |
-| Panel | 6", **1448×1072**. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
+| Panel | 6", **1448×1072**, 122 × 91 mm. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [`panel/README.md`](panel/README.md) (timings against Kindle's, supplies, TPS65185 sequence, VCOM); [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
 | BootROM | 16 KB mask ROM: boots **microSD first** (SD → NAND → SPI → eMMC → USB), falls through on a bad card, never writes storage | [`bootrom/README.md`](bootrom/README.md) |
 | Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
 | E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 (`GIC_SPI 49`), `dclk_ebc` 160 MHz from CPLL | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
@@ -117,8 +117,10 @@ The stock EBC driver takes its panel description from a 72-byte table in the ker
   L100/R18/HS10/U8/L6/VS2, lcdc_aclk 300 MHz, and a wrong physical size of 216×135 mm (the real panel is about 122×91 mm, ≈300 dpi)
   [CONFIRMED]; see [`kernel/rk-fb-keypad-battery-wifi.md`](kernel/rk-fb-keypad-battery-wifi.md) §A.2.
 
-**Not in our sources:** a mapping of these Rockchip field names to the E Ink datasheet terms (LSL/LBL/LDL/LEL, FSL/FBL/FDL/FEL,
-SDCK/GDCK timing), and the panel datasheet itself. `gdck_sta` and `lgonl` are used only as numbers here.
+In the property names of Rockchip's later `ebc-dev` binding these are LSL/LBL/LDL/LEL = 17/8/362/55 and FSL/FBL/FDL/FEL =
+2/4/1072/4. Amazon's Kindle Paperwhite 3 kernel drives 1448×1072 Carta panels with 13/8/362/52 (435 clocks per line,
+84.99 Hz) and the same vertical timing and gate clock; the comparison, the 85 Hz question and the supplies are in
+[`panel/README.md`](panel/README.md). The panel's own datasheet is not public.
 
 ## TPS65185 and VCOM
 
@@ -141,6 +143,9 @@ SDCK/GDCK timing), and the panel datasheet itself. `gdck_sta` and `lgonl` are us
 - The stock kernel never writes VCOM at power-up: the panel always runs on the PMIC EEPROM value. The only automatic writer is a
   probe-time **auto-fix**: if the PMIC holds 1.25 or 1.80 V (factory defaults), it programs the EEPROM to panel VCOM − 400 mV. This
   unit's 1.66 V = 2.06 − 0.40, so the fix ran once [STRONG].
+- The −0.40 V is ONYX's own: Amazon's Kindle Paperwhite 3 kernel reads the same passport field and writes it unchanged (2.06 V)
+  to its PMIC at every power-up, and the RC2 waveforms carry no VCOM shift or offset. Comparison in
+  [`panel/README.md`](panel/README.md) §4.
 - Other VCOM writers (all program the PMIC EEPROM): `/sys/bus/i2c/drivers/tps65185/vcom_mv` (0666, reads the probe-time cache),
   `onyx_misc.0/vcom_value` (0666), a USB mass-storage vendor SCSI command.
 - The kernel displays with the ramdisk waveform `320_R110_AE4D21_ED060KD1C2_TC`, not the one in the panel flash, so the panel ID
@@ -174,9 +179,9 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 
 ## Asked for, not in our sources
 
-- The panel datasheet and the E Ink-terminology timing (see Panel timings).
-- TPS65185 PWR_GOOD / nINT wiring (the PG register is readable, so a GPIO is not needed); the meaning of UPSEQ 0x39/0x11 against the
-  ED060KD1 specification.
+- The panel datasheet (not public); which power-up order and which logic level (1.8 V or 3.1 V) the panel really gets, and the
+  TPS65185 VDDH divider (the waveform asks for VGH 25 V); see [`panel/README.md`](panel/README.md).
+- TPS65185 PWR_GOOD / nINT wiring (the PG register is readable, so a GPIO is not needed).
 - The frontlight PWM frequency (only `pre_div = 0` → driver default 1000 is known).
 - Whether the `ok`/`menu` ADC keys and a Hall sensor are fitted on the RC2 shell (22 magnet IRQs on stock suggest the sensor is).
 - The role of GPIO2_B4 (`lcd_d10`) in suspend (probably a left-over touch reset of the Rockchip reference board, which resets its
@@ -198,7 +203,8 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`kernel/config-reconstruction.md`](kernel/config-reconstruction.md) | the stock kernel configuration reconstructed from the Image |
 | [`kernel/extract_kallsyms.py`](kernel/extract_kallsyms.py), [`kernel/sysfs_attrs.py`](kernel/sysfs_attrs.py) | recover kallsyms from a raw Image; list compiled-in sysfs attributes |
 | [`bootrom/README.md`](bootrom/README.md), [`bootrom/tools/`](bootrom/tools/) | the RK3026 BootROM: media order, SD init and the OCR bug, IDBlock/RC4 handling, secure-boot gate, fallback, a safe SD test |
-| [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, layout, passport encoding, what the stock kernel reads, R177 vs R110, read tools |
+| [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, E Ink's generic layout (the same in the Kindle Paperwhite 3), passport encoding, what the stock kernel reads, R177 vs R110, read tools |
+| [`panel/README.md`](panel/README.md) | panel timings against the Kindle Paperwhite 3 mode (83.64 vs 85 Hz), E Ink mode times, logic level, VGH 25 V from the waveform, the TPS65185 sequence decoded with TI's datasheet, VCOM (Kindle vs stock), DTS notes |
 | [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, image formats, ramdisk, raw `/proc` and sysfs excerpts |
 | [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, interrupts (`GIC_SPI n−32`), CRU (PLLs measured, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1, pin mux and pulls, datasheet contradictions resolved |
 | [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, the TPS65185 sequence and PG, DTS consequences |

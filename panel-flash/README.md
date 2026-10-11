@@ -5,7 +5,12 @@ for this panel. The stock kernel reads only the identity strings from it. For th
 ramdisk instead.
 
 Everything here comes from one device (pcb V1.73) on the stock 3.0.36+ kernel. The flash was only read, never written. Confidence
-marks are as in the [top README](../README.md#confidence-marks).
+marks are as in the [top README](../README.md#confidence-marks); **[CONFIRMED-src]** means read in a published source tree (named).
+
+**The layout is not an ONYX invention but E Ink's generic panel-flash format.** Amazon's GPL kernel for the Kindle Paperwhite 3
+reads the same layout, field offsets and character encoding (see
+[Same format in the Kindle Paperwhite 3](#same-format-in-the-kindle-paperwhite-3) below). So a driver can treat the flash as a
+property of the E Ink panel, not of the RC2 board.
 
 ## Chip and wiring
 
@@ -28,11 +33,12 @@ Reading past 512 KiB wraps around: a 1 MiB read returns the same 512 KiB twice.
 
 | Offset | Size | Content | |
 |---|---|---|---|
-| 0x000000 | 0x669 | Unknown block of 16-bit words (`0000 a000 ff03 0060 0160 …`). It looks like a command or register table. No stock code reads it | [VERIFY] |
-| 0x000669 | | zeros | |
-| 0x000886 | 287 192 B | **Complete E Ink WBF waveform `320_R177_AE6A41_ED060KD1U7_TC`**. Its whole-file CRC-32 checks out | [CONFIRMED] |
+| 0x000000 | 0x669 | Block of 16-bit words (`0000 a000 ff03 0060 0160 …`). In E Ink's layout 0x000–0x885 is the **command section** for E Ink's own timing controllers (Broadsheet, ISIS); the EBC does not need it. No stock code reads it | [STRONG] (Kindle source) |
+| 0x000669 | | zeros up to 0x885 | |
+| 0x000886 | 287 192 B | **Complete E Ink WBF waveform `320_R177_AE6A41_ED060KD1U7_TC`**. Its whole-file CRC-32 checks out. 0x886 is also the Kindle kernel's default waveform address | [CONFIRMED] |
 | 0x046a5e | | zeros up to 0x070000 | |
-| 0x070000 | 0x310 | **Panel passport**, encoded as described below | [CONFIRMED] |
+| 0x070000 | 0x310 | **Panel passport**, encoded as described below. 0x70000 is the passport address of E Ink's 512 KiB layout | [CONFIRMED] |
+| 0x07e000 | 0x2000 | test section in E Ink's layout; erased here | [CONFIRMED-src name] |
 | rest | | 0xFF (erased) | |
 
 ### Passport (0x70000)
@@ -44,12 +50,16 @@ Each field sits in a 16-byte-aligned slot and is padded with 0xFF.
 | 0x70000 | `ED060KD1U7` | part number, `/proc/panel_info` |
 | 0x70010 | `-2.06` | VCOM in volts, used by the VCOM auto-fix |
 | 0x70020 | `320_R177_AE6A41_ED060KD1U7_TC` | waveform version, `/proc/panel_info` |
-| 0x70040 | `R177` | not read |
+| 0x70040 | `R177` (FPL lot; Kindle reads three characters from +1) | not read |
 | 0x70050 | 33-character panel barcode starting with `ENT` (withheld: it is a serial number) | barcode, `/proc/panel_info` |
 | 0x70080 | `1448x1072` | not read |
 | 0x70090 | `122.356mmX90.584mm` (active area) | not read |
-| 0x700b0 | `1.8` (meaning unknown; perhaps the flash's 1.8 V interface) | not read [VERIFY] |
+| 0x700b0 | `1.8`: **panel VDD** (logic supply) in volts, by the field name in the Kindle source | not read [CONFIRMED-src name] |
 | 0x70300 | `Ver_1.0` (passport format version) | not read |
+
+The 0x70090 active area, 122.356 × 90.584 mm with 1448 pixels along the 122 mm side, gives a pixel pitch of 0.0845 mm
+(300 dpi) and `width-mm`/`height-mm` = **122 / 91** for the 1448×1072 scan the stock kernel uses
+([`../panel/README.md`](../panel/README.md)).
 
 Character encoding (stock `panel_data_translate`) [CONFIRMED]:
 
@@ -97,7 +107,38 @@ The grey modes of R177 are tuned differently (6–11 % of cells), while A2 and D
 this panel (ghosting, even grey steps) has not been tested [VERIFY]. The decoder used is in
 [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform).
 
+Both files carry the same **voltage-control blocks** (16 bytes in front of every waveform stream, format as in the Kindle
+kernel): VPOS +15 V, VNEG −15 V, VGH +25 V, VGL −20 V, VCOM offset 0 in all 79 blocks of each file, and `vcom_shifted` = 0 in
+both headers [CONFIRMED]. Details in [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform#voltage-control-blocks);
+what it means for the TPS65185 in [`../panel/README.md`](../panel/README.md).
+
 The flash dump and the R177 file are not published: they are vendor data from one panel.
+
+## Same format in the Kindle Paperwhite 3
+
+Amazon publishes the kernel of the Kindle Paperwhite 3 (7th generation, 2015, i.MX6 SoloLite, 1448×1072 Carta panels) under
+the GPL: "Kindle Source Code Notice", release 5.16.2.1.1 (`Kindle_src_5.16.2.1.1_4097470002.tar.gz`, kernel `linux-3.0.35`).
+Its panel-flash code is in `drivers/video/mxc/mxc_epdc_fb_lab126.c` (GPL-2.0+, Amazon) with the structures in
+`include/linux/einkwf.h`. Compared with the RC2 flash [CONFIRMED-src for the Kindle side, CONFIRMED for the RC2 side]:
+
+| | Kindle kernel | RC2 flash |
+|---|---|---|
+| Layout choice | by the WBF header byte `wf_type` (0x13): types 0x15 (WJ) and 0x2B (WR) mean a 256 KiB flash with the passport at 0x30000; 0x3C, 0x4B, 0x4C and **0x50 (AE)** a 512 KiB flash with the passport at 0x70000 | `wf_type` **0x50**, 512 KiB, passport at 0x70000 |
+| 0x000–0x885 | command section (Broadsheet/ISIS command tables) | block of 16-bit words up to 0x668, then zeros |
+| WBF | at 0x886 | at 0x886 |
+| Passport fields | 0x00 part number, 0x10 VCOM, 0x20 waveform name, 0x40 FPL lot, 0x50 barcode, 0x80 resolution, 0x90 size, **0xB0 VDD**, 0x300 version | the same offsets, all filled |
+| Character encoding | a function named **`panel_data_translate`**: digits, `_`, `.`, `-`, 0xCB–0xE4 a–z, 0xE5–0xFE A–Z | the same table, and the stock RC2 kernel uses the same function name |
+| Bus | SPI mode 0, READ 0x03 with a 24-bit address, 1 MHz | READ 0x03, 6 MHz |
+| Chip check | JEDEC ID 0x9F; manufacturers 0x20, 0xC2 (Macronix), 0xEF accepted | `c2 25 33` would be accepted |
+| WBF check | CRC-32 over the file length with bytes 0–3 zeroed | matches for R177 |
+| Panel mode | chosen by the **first three characters of the barcode** from a table of known prefixes | the RC2 barcode prefix (`ENT`) is **not** in Amazon's table: that kernel would fall back to its default panel mode. Whatever lot this panel is, the Kindle firmware does not know it |
+| VCOM | the passport string is converted and written to the PMIC at every power-up, as is (+0.25 V only when the WBF header's `vcom_shifted` is set) | stock ONYX writes passport − 0.40 V into the PMIC EEPROM once; see [`../panel/README.md`](../panel/README.md) |
+
+Disabled code in the Kindle kernel waits for E Ink to "finalize the flash spec" with the panel resolution (and VGH and the
+logic level) in it, so the format comes from E Ink and was still growing then; today the Kindle picks those from the barcode
+table. For a mainline device tree this suggests an nvmem layout of the E Ink passport on a `jedec,spi-nor`
+node (part number, VCOM, waveform name, VDD …), with the 256/512 KiB variant chosen by `wf_type`; the WBF at 0x886 can serve as
+a fallback waveform source when none is installed in the root file system [STRONG as a proposal].
 
 ## Reading it yourself
 
