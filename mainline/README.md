@@ -62,7 +62,9 @@ M 100–800, L above 800.
 
 v7.2 has no driver for an EPD controller inside a SoC (neither Rockchip EBC nor i.MX EPDC), no waveform helper and no UAPI for an
 update mode; only SPI panels with their own controller (`repaper`, `pixpaper`) and the generic `FB_DAMAGE_CLIPS` plane property
-[CONFIRMED-src]. The RK3128 clock driver already describes `DCLK_EBC`/`HCLK_EBC`, but no EBC node or driver exists. The
+[CONFIRMED-src]. The RK3128 clock driver already describes `DCLK_EBC`/`HCLK_EBC`, but no EBC node or driver exists. The RK3128 EBC is the
+same IP as the RK3026's (same registers, interrupt bits, base and IRQ in ONYX's RK3128 kernels; RK3036 has no EBC), so one
+driver can serve both ([onyx-rc2-ebc `driver/other-controllers.md`](https://github.com/hsw/onyx-rc2-ebc/blob/main/driver/other-controllers.md) §8). The
 register-level description of the RK3026 EBC and a sketch of a minimal in-kernel driver are in
 [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) (`driver/registers.md`, `driver/new-driver.md`).
 
