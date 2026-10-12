@@ -74,9 +74,13 @@ step "stage2 HALT card"
 uv run -q --script "$here/tests/test_stage2.py" "$A/card-m0-halt" "$A/stage2" --expect-halt | tee -a "$rep"
 step "ramdisk init"
 "$here/tests/test_ramdisk_init.sh" "$A/card-m0" | tee -a "$rep"
-step "card layouts: --data-partition (ext4 256 MiB + FAT32 RC2DATA) x2, rootfs resize, FAT32 checks, --data-img, MBR guard"
+step "card layouts: --data-partition (ext4 256 MiB, p2 formatted on write) x2, rootfs resize, --card-bytes, --data-img, MBR guard"
 python3 -I "$here/tests/test_card_layout.py" "$A/stage2/stage2.bin" "$RD" "$tmp/layout" "$A/card-m0" -- "${IN[@]}" \
   | tee -a "$rep"
+step "write-card.sh disk guards: diskutil fixtures, --check refusals on this Mac (nothing unmounted or written)"
+python3 -I "$here/tests/check_write_guard.py" "$A/card-m0" | tee -a "$rep"
+step "data layout write path on sparse disk images (2 GB, 32 GiB): p2 length, readback, newfs_msdos RC2DATA, mount (macOS)"
+python3 -I "$here/tests/test_format_data.py" "$tmp/format" | tee -a "$rep"
 step "shellcheck"
 if command -v shellcheck >/dev/null; then
   shellcheck "$here/write-card.sh" "$here/mkdata.sh" "$here/tests/run.sh" "$here/tests/test_ramdisk_init.sh" \

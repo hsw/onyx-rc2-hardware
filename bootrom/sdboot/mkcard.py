@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Build the RC2 sdboot card image (sdcard.img, exactly the size of the 2 GB card we test with) and its manifest.
+"""Build the RC2 sdboot card image (sdcard.img) and its manifest. Single layout and --data-img: a full card image of exactly
+--card-bytes (default the 2 GB SanDisk SDSU02G test card). Data layout: the image ends with partition 1; write-card.sh sets
+the p2 length from the card and formats p2 on the card.
 
 Layout (512-byte sectors; README.md "Card layout"):
   LBA 0            MBR (disk signature "RC2S"), see the two layouts below
@@ -12,11 +14,14 @@ Layout (512-byte sectors; README.md "Card layout"):
   LBA 131072..     partition 1 (0x83): ext4, label rc2root, to the end of the card (empty, or --rootfs-img as is)
   data layout (--data-partition):
   LBA 131072       partition 1 (0x83): ext4 rc2root, 524288 sectors (256 MiB); --rootfs-img is resized to fit
-  LBA 655360..     partition 2 (0x0C): FAT32, label RC2DATA, to the end of the card (fat32.py: empty; or --data-img)
+  LBA 655360..     partition 2 (0x0C): FAT32, label RC2DATA, to the end of the card. Not in the image: the MBR entry
+                   carries a placeholder length (the 2 GB card's, 3207168 sectors) that write-card.sh replaces with the
+                   card's size, then it formats p2 on the card (formatdata.py, newfs_msdos). With --data-img the image is
+                   the full card (--card-bytes) and p2 is that prebuilt FAT32 image
 
 usage: mkcard.py --out DIR --stage2 BIN --idb IDB_DUMP --kernel IMAGE --ramdisk RAMDISK.cpio.gz
                  (--waveform BIN | --no-waveform) [--loader RKBOOT.bin] [--rc4-key HEX]
-                 [--data-partition] [--rootfs-img EXT4] [--data-img FAT32] [--halt] [--quiet] [--chunk N]
+                 [--card-bytes N] [--data-partition] [--rootfs-img EXT4] [--data-img FAT32] [--halt] [--quiet] [--chunk N]
                  [--cmdline-extra STR] [--name NAME]
 Every stock input comes from your own device or firmware (README.md "Inputs"); none is in this repository. The RC4 key
 comes from --rc4-key or the environment variable RK_RC4_KEY. Output: DIR/{sdcard.img, manifest.json, manifest.txt,
@@ -29,8 +34,10 @@ sys.path.insert(0, HERE)
 import rkidb  # noqa: E402
 import fat32  # noqa: E402
 
-CARD_BYTES = 1977614336                  # the 2 GB SanDisk SDSU02G test card (size from the card's sysfs)
-CARD_SECTORS = CARD_BYTES // 512
+DEFAULT_CARD_BYTES = 1977614336          # the 2 GB SanDisk SDSU02G test card (size from the card's sysfs)
+DEFAULT_CARD_SECTORS = DEFAULT_CARD_BYTES // 512
+CARD_ALIGN = 32768                       # --card-bytes: a multiple of the 32 KiB write block (write-card.sh)
+MAX_CARD_BYTES = 32 << 30                # --card-bytes upper bound: SDHC ceiling (README "Card size"); write-card.sh too
 IDB_LBA = 64
 IDB_COPY_LBAS = [64 + 1024 * k for k in range(5)]
 BT_LBA, BT_SIZE, BT_MAGIC, BT_VERSION = 8192, 1024, 0x54423252, 1
@@ -39,9 +46,11 @@ PART_LBA = 131072                        # partition 1 in both layouts; the firs
 P1_DATA_SECTORS = 524288                 # data layout: p1 = 256 MiB = 65536 ext4 blocks of 4 KiB
 P1_BLOCKS = P1_DATA_SECTORS * 512 // 4096
 P2_LBA = PART_LBA + P1_DATA_SECTORS      # 655360 (320 MiB, 4 MiB aligned) = end of the rootfs area
-P2_SECTORS = CARD_SECTORS - P2_LBA       # 3207168
+DEFAULT_P2_SECTORS = DEFAULT_CARD_SECTORS - P2_LBA   # 3207168 on the default card
+MIN_P1_SINGLE_BYTES = P1_DATA_SECTORS * 512   # single layout: p1 at least 256 MiB, as in the data layout (mke2fs refuses
+                                         # the 32 MiB journal below ~100 MiB)
 ROOTFS_AREA_BYTES = P2_LBA * 512         # write-card.sh --rootfs: [0, end of p1) = 335544320 B
-assert P2_LBA % 8192 == 0 and ROOTFS_AREA_BYTES % 32768 == 0
+assert P2_LBA % 8192 == 0 and ROOTFS_AREA_BYTES % CARD_ALIGN == 0
 ROOTFS_LASTCHECK = '20261010000000'      # tune2fs -T (TZ=UTC: = EPOCH): e2fsck stamps s_lastcheck with the wall clock
 FLAG_HALT, FLAG_QUIET = 1, 2
 KIND = {'kernel': 1, 'ramdisk': 2, 'data': 3}
@@ -85,6 +94,28 @@ def boot_table(blobs, cmdline, flags, chunk):
     t[0x100:0x100 + len(c)] = c
     struct.pack_into('<I', t, 0x3fc, zlib.crc32(bytes(t[:0x3fc])) & 0xffffffff)
     return bytes(t)
+
+
+def min_card_bytes(data_partition):
+    """Smallest card for a layout: boot area + 256 MiB p1 (single); boot area + p1 + the smallest FAT32 p2 (data)."""
+    if data_partition:
+        n = P2_LBA * 512 + fat32.MIN_SECTORS * 512
+    else:
+        n = PART_LBA * 512 + MIN_P1_SINGLE_BYTES
+    return -(-n // CARD_ALIGN) * CARD_ALIGN
+
+
+def card_error(card_bytes, data_partition):
+    """Why --card-bytes cannot hold this layout, or None."""
+    if card_bytes % CARD_ALIGN:
+        return f'--card-bytes {card_bytes} is not a multiple of {CARD_ALIGN} (32 KiB)'
+    if card_bytes > MAX_CARD_BYTES:
+        return f'--card-bytes {card_bytes} is larger than {MAX_CARD_BYTES} (32 GiB)'
+    lo = min_card_bytes(data_partition)
+    if card_bytes < lo:
+        return (f"--card-bytes {card_bytes} is smaller than {lo}, the minimum for the "
+                f"{'data' if data_partition else 'single'} layout")
+    return None
 
 
 def mbr(parts):
@@ -242,6 +273,10 @@ def main():
     ap.add_argument('--ramdisk', required=True, help='gzip cpio initramfs')
     ap.add_argument('--waveform', help='blob for waveform_addr: ebc_waveform.bin from your stock boot ramdisk')
     ap.add_argument('--no-waveform', action='store_true')
+    ap.add_argument('--card-bytes', type=int,
+                    help='full images only (single layout, --data-img): card (= image) size in bytes, a multiple of '
+                    f'32 KiB, at most 32 GiB (default {DEFAULT_CARD_BYTES}, the 2 GB test card; "Disk Size" in diskutil '
+                    'info diskN). The data layout without --data-img takes the size from the card at write time')
     ap.add_argument('--data-partition', action='store_true',
                     help='two partitions: ext4 rc2root 256 MiB + FAT32 RC2DATA to the end (default: one ext4 partition)')
     ap.add_argument('--rootfs-img', help='ext4 image (label rc2root) for partition 1 instead of an empty ext4; with '
@@ -257,6 +292,18 @@ def main():
     a = ap.parse_args()
     if a.data_img and not a.data_partition:
         sys.exit('REFUSE: --data-img needs --data-partition')
+    fow = a.data_partition and not a.data_img   # p2 formatted on the card, its MBR length set at write time
+    if fow and a.card_bytes is not None:
+        sys.exit('REFUSE: --card-bytes: the data layout takes the p2 length from the card at write time (write-card.sh); '
+                 '--card-bytes is for full images (single layout, --data-img)')
+    card_bytes = DEFAULT_CARD_BYTES if a.card_bytes is None else a.card_bytes
+    err = card_error(card_bytes, a.data_partition)
+    if err:
+        sys.exit('REFUSE: ' + err)
+    card_sectors = card_bytes // 512
+    p2_sectors = card_sectors - P2_LBA            # with fow: the placeholder (the 2 GB card's p2)
+    image_bytes = ROOTFS_AREA_BYTES if fow else card_bytes
+
     if not a.waveform and not a.no_waveform:
         sys.exit('REFUSE: give --waveform (ebc_waveform.bin from your stock boot ramdisk) or --no-waveform')
     rkidb.set_key(a.rc4_key)
@@ -311,20 +358,20 @@ def main():
     bt = boot_table(blobs, cmdline, flags, a.chunk)
 
     layout = 'data' if a.data_partition else 'single'
-    parts = [dict(index=1, lba=PART_LBA, sectors=P1_DATA_SECTORS if a.data_partition else CARD_SECTORS - PART_LBA,
+    parts = [dict(index=1, lba=PART_LBA, sectors=P1_DATA_SECTORS if a.data_partition else card_sectors - PART_LBA,
                   type='0x83', fs='ext4', label='rc2root')]
     if a.data_partition:
-        parts.append(dict(index=2, lba=P2_LBA, sectors=P2_SECTORS, type='0x0c', fs='fat32', label=fat32.LABEL,
+        parts.append(dict(index=2, lba=P2_LBA, sectors=p2_sectors, type='0x0c', fs='fat32', label=fat32.LABEL,
                           serial=f'0x{fat32.SERIAL:08x}'))
     for p in parts:
         p['offset'], p['bytes'] = p['lba'] * 512, p['sectors'] * 512
     p1 = parts[0]
     mbr_sector = mbr([(int(p['type'], 16), p['lba'], p['sectors']) for p in parts])
     if a.data_img:
-        if os.path.getsize(a.data_img) != P2_SECTORS * 512:
-            sys.exit(f'REFUSE: --data-img is {os.path.getsize(a.data_img)} B, partition 2 is {P2_SECTORS * 512} B')
+        if os.path.getsize(a.data_img) != p2_sectors * 512:
+            sys.exit(f'REFUSE: --data-img is {os.path.getsize(a.data_img)} B, partition 2 is {p2_sectors * 512} B')
         with open(a.data_img, 'rb') as d:
-            bad = fat32.check_boot_sector(d.read(512), P2_SECTORS)
+            bad = fat32.check_boot_sector(d.read(512), p2_sectors)
         if bad:
             sys.exit('REFUSE: --data-img boot sector: ' + '; '.join(bad))
 
@@ -334,7 +381,7 @@ def main():
             os.remove(os.path.join(a.out, n))
     img_path = os.path.join(a.out, 'sdcard.img')
     with open(img_path, 'wb') as f, tempfile.TemporaryDirectory() as td:
-        f.truncate(CARD_BYTES)
+        f.truncate(image_bytes)
         f.seek(0); f.write(mbr_sector)
         f.seek(IDB_LBA * 512); f.write(idb_img)
         f.seek(BT_LBA * 512); f.write(bt)
@@ -368,23 +415,24 @@ def main():
                 if a.data_img:
                     p2['content'] = f'{os.path.basename(a.data_img)} sha256 {file_sha(a.data_img)}'
                     copy_sparse(f, a.data_img, p2['offset'])
-                else:
-                    chunks, info = fat32.build(P2_SECTORS, P2_LBA)
-                    fat32.write_into(f, p2['offset'], chunks)
-                    p2['content'] = (f"empty FAT32 (fat32.py), serial {info['serial']}, {info['clusters']} clusters of "
-                                     f"4 KiB, reserved {info['reserved']}, FAT {info['fat_sectors']} x2, data at sector "
-                                     f"{info['data_start']}")
-    assert os.path.getsize(img_path) == CARD_BYTES
-    ranges = dict(img=(0, CARD_BYTES), boot=(0, PART_LBA * 512), rootfs_area=(0, p1['offset'] + p1['bytes']))
-    ranges.update({f"p{p['index']}": (p['offset'], p['offset'] + p['bytes']) for p in parts})
+    if fow:
+        p2 = parts[1]
+        p2.update(format_on_write=True, sha256=None,
+                  content='not in the image: write-card.sh sets the MBR length from the card (placeholder: the 2 GB '
+                  'card\'s) and formats it on the card (formatdata.py: newfs_msdos FAT32 RC2DATA, 32 KiB aligned)')
+    assert os.path.getsize(img_path) == image_bytes
+    ranges = dict(img=(0, image_bytes), boot=(0, PART_LBA * 512), rootfs_area=(0, p1['offset'] + p1['bytes']))
+    ranges.update({f"p{p['index']}": (p['offset'], p['offset'] + p['bytes']) for p in parts
+                   if p['offset'] + p['bytes'] <= image_bytes})
     hashes = range_shas(img_path, ranges)
     for p in parts:
-        p['sha256'] = hashes[f"p{p['index']}"]
+        if f"p{p['index']}" in hashes:
+            p['sha256'] = hashes[f"p{p['index']}"]
 
     open(os.path.join(a.out, 'idb.bin'), 'wb').write(idb_img)
     open(os.path.join(a.out, 'boottable.bin'), 'wb').write(bt)
     m = dict(
-        name=a.name, card_bytes=CARD_BYTES, git_head=git_head(),
+        name=a.name, image_bytes=image_bytes, card_bytes=None if fow else card_bytes, git_head=git_head(),
         layout=layout, sdcard_img_sha256=hashes['img'],
         boot_area_bytes=PART_LBA * 512, boot_area_sha256=hashes['boot'],
         mbr=dict(lba=0, disk_signature='0x53324352', table_hex=mbr_sector[446:510].hex(), boot_signature='55aa'),
@@ -404,7 +452,9 @@ def main():
         m['rootfs_area_bytes'], m['rootfs_area_sha256'] = ROOTFS_AREA_BYTES, hashes['rootfs_area']
     json.dump(m, open(os.path.join(a.out, 'manifest.json'), 'w'), indent=1)
     with open(os.path.join(a.out, 'manifest.txt'), 'w') as t:
-        t.write(f"{a.name}  sdcard.img {CARD_BYTES} B  sha256 {m['sdcard_img_sha256']}\n")
+        t.write(f"{a.name}  sdcard.img {image_bytes} B  sha256 {m['sdcard_img_sha256']}\n")
+        t.write('card size: set at write time (p2 length from the card, p2 formatted on the card)\n' if fow
+                else f'card size {card_bytes} B (full image)\n')
         t.write(f"layout {layout}\n")
         t.write(f"boot area (first {PART_LBA * 512} B) sha256 {m['boot_area_sha256']}\n")
         if a.data_partition:
@@ -418,8 +468,10 @@ def main():
             t.write(f"LBA {b['lba']:>7}  {b['kind']:<8} {b['size']:>9} B -> 0x{b['load']:08x} crc32 0x{b['crc32']:08x}"
                     f" sha256 {b['sha256']} ({b['name']})\n")
         for p in parts:
-            t.write(f"LBA {p['lba']:>7}  partition {p['index']} type {p['type']} {p['fs']} {p['label']}, {p['sectors']} "
-                    f"sectors, sha256 {p['sha256']}: {p['content']}\n")
+            n = f"{p['sectors']} sectors (placeholder)" if p.get('format_on_write') else f"{p['sectors']} sectors"
+            h = '' if p.get('format_on_write') else f", sha256 {p['sha256']}"
+            t.write(f"LBA {p['lba']:>7}  partition {p['index']} type {p['type']} {p['fs']} {p['label']}, {n}{h}: "
+                    f"{p['content']}\n")
         t.write(f"cmdline: {cmdline}\n")
     with open(os.path.join(a.out, 'SHA256SUMS'), 'w') as s:
         s.write(f"{m['sdcard_img_sha256']}  sdcard.img\n{sha(idb_img)}  idb.bin\n{sha(bt)}  boottable.bin\n")

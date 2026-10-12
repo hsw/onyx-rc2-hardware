@@ -21,6 +21,15 @@ power on / reset
        └ stock kernel 3.0.36+ -> initramfs /init
 ```
 
+## Requirements
+
+| Step | Needs |
+|---|---|
+| write a card: `write-card.sh` (+ `diskguard.py`, `mbrguard.py`, `formatdata.py`) | macOS built-ins only: `diskutil`, `dd`, `newfs_msdos`, `fsck_msdos`, `shasum`, `stat`, `mktemp`, and `python3` with the standard library only (`/usr/bin/python3` of the Xcode Command Line Tools, 3.9, is enough). No Homebrew |
+| card image: `mkcard.py` | `python3` (standard library) and e2fsprogs for partition 1: `brew install e2fsprogs` on macOS (keg-only: used from `/opt/homebrew/opt/e2fsprogs/sbin`, `E2FSPROGS_SBIN` overrides), `/usr/sbin` on Linux. Same bytes for one e2fsprogs version (1.47.4 here). `mkdata.sh` (a prefilled `--data-img`) also needs mtools and dosfstools |
+| stage2: `stage2/build.sh` | Homebrew `llvm` and `lld` (`brew install llvm lld`; Apple clang has no `ld.lld` or `llvm-objcopy`; `LLVM`/`LLD` override the paths). Same toolchain, same bytes: built with clang/LLD 23.1.3 (recorded in `toolchain.txt` next to `stage2.bin`); another version may give other bytes |
+| tests: `tests/run.sh` | all of the above, and `uv` (Unicorn 2.1.4 and Capstone 5.0.7 come as inline script dependencies, Python ≥ 3.10). Optional: mtools and dosfstools (FAT32 cross-checks, `SKIP` lines without them), shellcheck. `test_format_data.py` needs macOS (`diskutil image attach`), `SKIP` elsewhere |
+
 ## Status
 
 Tested on the RC2 with a 2 GB SanDisk SDSU02G card (SDSC, byte addressing) [CONFIRMED]:
@@ -113,9 +122,18 @@ alias at 0. The ROM uses the same routine to load stage2 itself.
 
 ## Card layout
 
-The image has exactly the size of the 2 GB test card: 1 977 614 336 B = 3 862 528 sectors of 512 B, and `write-card.sh` accepts
-only a card of that size. For another card, change `CARD_BYTES` in `mkcard.py` and `write-card.sh`; the tests pin the numbers of
-this card.
+**Card size.** Data layout (`--data-partition`): nothing to pass. The image ends with p1 (320 MiB); `write-card.sh` sets p2's
+length in the MBR from the card it writes to (disk size rounded down to 32 KiB) and formats p2 there (below). Full images (single
+layout, or the data layout with `--data-img`): the image has exactly `mkcard.py --card-bytes N` bytes, and the last partition
+ends at N. The default is the 2 GB test card: 1 977 614 336 B = 3 862 528 sectors of 512 B; the numbers below are for it, and only
+the last partition changes with the size. N must be a multiple of 32 KiB (the write block), at least the layout's minimum (single:
+boot area + 256 MiB p1 = 335 544 320 B; data: boot area + p1 + the smallest FAT32 p2 = 608 141 312 B) and at most 32 GiB
+(34 359 738 368 B). Use your card's size (`diskutil info diskN`, "Disk Size") or anything smaller. `manifest.json` records
+`image_bytes` and `card_bytes` (null in the data layout).
+
+Why 32 GiB: that is the SDHC ceiling, and the RC2's spec is believed to be microSD up to 32 GB. An SDXC card comes formatted exFAT,
+and the stock 3.0 kernel has vfat but no exFAT, so it would need FAT32 anyway. The real limit for booting is the ROM's OCR rule
+(**OCR bug** below): only the 2 GB SDSC card is tested on the device.
 
 | LBA | Size | Content |
 |---|---|---|
@@ -139,11 +157,21 @@ Blobs start at 8 MiB on 1 MiB boundaries and must end before 64 MiB. The first 6
 | Partition | LBA | Sectors | Type | Content |
 |---|---|---|---|---|
 | p1 | 131072 | 524 288 (256 MiB) | 0x83 | ext4 `rc2root`: empty, or `--rootfs-img` resized to 65536 blocks of 4 KiB (`e2fsck`, `resize2fs`, `tune2fs -T`) |
-| p2 | 655 360 | 3 207 168 (to the end) | 0x0C | FAT32 `RC2DATA`, 4 KiB clusters, written by `fat32.py` (empty), or `--data-img` |
+| p2 | 655 360 | to the card end, rounded down to 32 KiB (2 GB card: 3 207 168) | 0x0C | FAT32 `RC2DATA`, formatted on the card by `write-card.sh`; or `--data-img` in a full image |
+
+- **p2 is formatted on the card, not shipped in the image.** `sdcard.img` holds only [0, end of p1) = 335 544 320 B; p2's MBR
+  entry carries a placeholder length (the 2 GB card's) and the manifest marks p2 `format_on_write`. The whole write puts the
+  card's p2 length into a copy of the first 32 KiB block (only MBR bytes 474..477 change), writes and reads back, then
+  `formatdata.py` formats p2 with macOS `newfs_msdos -F 32`: label `RC2DATA`, serial `0x52433244`, hidden sectors 655 360, two
+  FATs, reserved area and both FATs in whole 32 KiB units, data region at a 4 MiB multiple, and 32 KiB clusters where FAT32
+  still has more than 65 525 of them, else 16, 8 or 4 KiB. The 2 GB card gets **16 KiB** clusters (32 KiB would leave 49 984
+  clusters: FAT16 by count); 4 GiB and larger get 32 KiB. The boot sector is read back and checked, then `fsck_msdos -n`.
 
 - The stock 3.0 kernel has vfat with `nls_cp437` and `nls_iso8859-1` but no `nls_utf8`. Mount p2 with
   `-t vfat -o utf8,codepage=437,iocharset=iso8859-1,shortname=mixed` to get UTF-8 long names.
-- `mkdata.sh OUT.img DIR` makes a filled p2 image for `--data-img` (mtools, dosfstools).
+- `--data-img` makes a full image with a prebuilt p2 (`--card-bytes` applies). `mkdata.sh OUT.img DIR [CARD_BYTES]` makes a
+  filled p2 image (mtools, dosfstools; the empty volume from `fat32.py`, a deterministic FAT32 writer with 4 KiB clusters);
+  `fat32.py --card-bytes N` an empty one. `--data-img` must be exactly the p2 size of that card size.
 
 **OCR bug.** The card layout supports SDSC cards and SDHC cards whose ready OCR is exactly `0xC0FF8000` or `0xC0FF8080`. Any other
 SDHC/SDXC card is byte-addressed by the ROM ([`../README.md`](../README.md) "The OCR bug"): ROM sector *s* is read from card block
@@ -251,8 +279,7 @@ None of the vendor files are in this repository. You need these from your own de
 
 ## Build and write a card
 
-Tools: Python 3, LLVM clang and ld.lld (Homebrew `llvm` and `lld` on macOS), e2fsprogs (Homebrew keg `e2fsprogs` on macOS;
-`E2FSPROGS_SBIN` overrides). For the tests also `uv`; optional mtools, dosfstools, shellcheck.
+Tools: see [Requirements](#requirements).
 
 ```sh
 stage2/build.sh out/stage2
@@ -264,13 +291,35 @@ export RK_RC4_KEY=<32 hex digits>
   --waveform ebc_waveform.bin --ramdisk your-ramdisk.cpio.gz [--data-partition --rootfs-img rootfs.ext4]
 ```
 
-Writing on macOS: `sudo ./write-card.sh diskN out/card [--boot-area | --rootfs]`, with the card in a **USB** reader (the built-in
-reader timed out on raw I/O). It refuses a disk that is not exactly the card size, not on USB or not removable, and an image whose
-sha256 differs from the manifest. It writes in 32 KiB blocks and reads back.
+Writing on macOS: `sudo ./write-card.sh diskN out/card [--boot-area | --rootfs | --format-data]`, with the card in a **USB**
+reader (the built-in reader timed out on raw I/O). The image size is the manifest's `image_bytes` and must equal the file size;
+the sha256 (of the unpatched file) must match the manifest. Before anything is unmounted or written, `diskguard.py` checks the disk from `diskutil info -plist` and
+`diskutil list -plist` (parsed with `plistlib`) and refuses:
+
+| Guard | Refuses |
+|---|---|
+| id | an argument that is not `^disk[0-9]+$` (partitions like `disk7s1`, names, paths), an unknown id, or not a whole disk |
+| internal | `Internal` true: the Mac's SSD, and the built-in SD reader |
+| bus | `BusProtocol` other than `USB` (built-in reader, disk images) |
+| removable | neither `RemovableMedia` nor `Ejectable` |
+| bootdisk | the parent whole disk of `/` or the whole disk of any APFS physical store of `/` |
+| volumes | a volume mounted at `/`, under `/System` or `/Volumes/Macintosh HD`, or any APFS container or physical store on the disk (erase an APFS-formatted card to FAT first) |
+| size | a disk smaller than the image or larger than 32 GiB (`RC2_CARD_MAX_BYTES` raises the cap); with `RC2_CARD_BYTES` set, any other size (`sudo RC2_CARD_BYTES=1977614336 ./write-card.sh …` pins the exact card) |
+
+It prints the disk's media name, size and protocol, asks you to type the disk id back (`--yes` skips only that), checks again and
+then writes in 32 KiB blocks and reads back. A disk larger than a full image is fine; the rest of it is not touched. In the data
+layout the whole write **erases RC2DATA** (a warning comes before the typed confirmation): it writes [0, end of p1) with the
+card's p2 length, the MBR block last (macOS rereads the partition table at once and holds the disk busy), checks the readback
+(the image with only MBR bytes 474..477 changed), then formats p2 and runs `fsck_msdos -n`.
+`./write-card.sh --check diskN [out/card [mode]]` runs every guard (with a card dir also the image checks), prints the verdict and
+exits 0 or 1 without unmounting, writing or reading the raw disk; it needs no sudo.
 
 - `--boot-area` writes the first 64 MiB (new stage2, kernel or ramdisk). `--rootfs` (data layout) writes the first 320 MiB, so p2
-  stays. Both refuse unless the card's partition table already equals the image's (`mbrguard.py`).
-- On Linux: `dd if=sdcard.img of=/dev/sdX bs=32K conv=fsync`, then compare the sha256 of what you read back with the manifest.
+  stays. `--format-data` (data layout) only reformats p2 as an empty `RC2DATA`. All three refuse unless the card's partition
+  table already equals the image's (`mbrguard.py`); in the data layout p2 is compared by type and start only, and the card keeps
+  its p2 length. `--check` with a data-layout card dir also prints the p2 length the whole write would set.
+- On Linux: `dd if=sdcard.img of=/dev/sdX bs=32K conv=fsync`, then compare the sha256 of what you read back with the manifest
+  (full images; a data-layout card needs the p2 length set and p2 formatted, which `write-card.sh` does on macOS).
 
 First boot: the HALT card. Book off, card in, charger attached, power on. Expect LED 1 to 5, then the HALT pattern.
 
@@ -313,19 +362,23 @@ skips what needs the real thing, with a `SKIP` line. Environment variables enabl
 | `check_nowrite.py` | [Safety](#safety-the-emmc-is-never-written) |
 | `test_rom_sd.py` (ROM) | the ROM's SD init (`0x1728`) and reads of 1, 4 and 64 sectors (also through the `0x10100000` alias) against an emulated DesignWare controller and card: SDSC → class 8, byte addresses; SDHC → class 4, sector addresses; the data equals the card; a data CRC error returns 1 and the next read works; only `IMEM+0`, `+0x40`, `+0x44` matter |
 | `test_stage2.py` (ROM) | **chain**: the ROM's own SD init and IDB loader read the card image, decrypt the header, load and call FlashData (stubbed after a hash compare), load stage2 to 0x60000000 and jump; stage2 runs to the kernel entry. At the entry: pc, r0–r2, CPSR, SCTLR; kernel, ramdisk and waveform in DDR equal the card; the ATAG list; the log; the first three peripheral writes are the power hold; CPU1 reset; the remap written once and last; only CMD17/18/12; every ROM call went to `0x168c`; progress 1–5. Also: SDHC, transient read errors (retried), and the failure paths (bad magic, bad CRC, blob in partition 1, ramdisk onto stage2, read errors, kernel CRC mismatch, controller id 2, HALT): each stops with the right code and never reaches the kernel |
-| `test_card_layout.py` | data layout built twice → identical; MBR entries; manifest hashes recomputed; p1 grown and shrunk to 65536 blocks, `e2fsck -fn` clean, a test file intact; p2 by an independent FAT32 reader (`check_fat32.py`), `fsck.fat -n`, mtools round trip; `--data-img`; every refusal; `mbrguard.py`; `write-card.sh` refusals before any disk access |
+| `test_card_layout.py` | data layout built twice → identical; MBR entries; manifest hashes recomputed; p1 grown and shrunk to 65536 blocks, `e2fsck -fn` clean, a test file intact; the `fat32.py` p2 by an independent FAT32 reader (`check_fat32.py`), `fsck.fat -n`, mtools round trip; `--data-img` (full image = the data-layout image + that p2); every refusal; `mbrguard.py`; `write-card.sh` refusals before any disk access |
+| `test_card_layout.py` (card size) | the data-layout image (320 MiB, p2 placeholder, `format_on_write`) and full images with `--card-bytes` 4 GiB (single; data with a 4 GiB `--data-img`) give a consistent MBR and manifest (`image_bytes`, partitions, MBR table, sha256); `mbrguard.py` p2 length for 2 GB and 32 GiB disks, the patched block (only bytes 474..477 differ), its hash, the readback check, `--p2-any-length`; refused: not a multiple of 32 KiB, above 32 GiB, below the layout minimum, 0, `--card-bytes` with the data layout without `--data-img` |
+| `test_format_data.py` | macOS, disk images only (sparse 2 GB and 32 GiB files attached with `diskutil image attach --noMount`; anything diskutil does not report as a disk image is refused): the data-layout whole write as `write-card.sh` runs it (p2 length, `dd`, readback, MBR check), `formatdata.py`, `fsck_msdos -n`, mounts as FAT32 `RC2DATA`, boot sector alignment (2 GB: 16 KiB clusters, 32 GiB: 32 KiB), `fsck.fat -n` on the 2 GB p2; `formatdata.py` refuses a single-layout disk and a partition id |
+| `check_write_guard.py` | the disk guards on saved `diskutil` plists (`tests/fixtures/diskutil/`: a Mac's internal SSD and a disk image, trimmed; hand-written USB card readers, the built-in reader, a USB SSD, an APFS card, a USB boot disk, diskutil failures); on macOS `write-card.sh --check` on `disk0`, a bogus id, a partition id and `/` must refuse, with `dd` and every `diskutil` verb except info/list trapped |
 | `test_ramdisk_init.sh` | `sh -n`, shellcheck, no storage commands, only proc/sysfs/devtmpfs/tmpfs mounts; with the ROM: the `devmem` log decoder against the emulated log, byte for byte |
 
 ## Files
 
 - `stage2/`: bare-metal stage2 (`start.S`, `stage2.c`, `bootinfo.h`, `stage2.ld`, `build.sh`)
-- `mkcard.py`: card image builder (MBR, IDB, boot table, blobs, ext4 `rc2root`, optional FAT32 `RC2DATA`, manifest)
+- `mkcard.py`: card image builder (MBR, IDB, boot table, blobs, ext4 `rc2root`, optional FAT32 `RC2DATA` entry, manifest)
 - `rkidb.py`: IDB helpers (RC4 with a key you supply, stock IDB parts, RKBOOT entries, IDB builder)
-- `fat32.py`, `mkdata.sh`: deterministic FAT32 writer; filled p2 image
-- `write-card.sh`, `mbrguard.py`: card writer for macOS with readback; partition-table guard for partial writes
+- `fat32.py`, `mkdata.sh`: FAT32 geometry for formatting p2 and deterministic FAT32 writer; filled p2 image for `--data-img`
+- `write-card.sh`, `mbrguard.py`, `diskguard.py`, `formatdata.py`: card writer for macOS with readback; partition-table guard and
+  p2 length at write time; disk guards (external USB card only, `--check`); p2 formatting (`newfs_msdos`)
 - `mke2fs.conf`: ext4 settings the 3.0 kernel can mount
 - `ramdisk-sd/`: `init` and `mkramdisk-sd.py`, the test ramdisk
-- `tests/`: `run.sh`, `fake_inputs.py`, `rc2emu.py` (Unicorn: ROM dump, emulated DesignWare SD controller and card), the tests above
+- `tests/`: `run.sh`, `fake_inputs.py`, `rc2emu.py` (Unicorn: ROM dump, emulated DesignWare SD controller and card), the tests above, `fixtures/diskutil/` (plists for `check_write_guard.py`)
 
 Not included: the Ghidra and capstone scripts we used to read the stock loader (they only produce listings of vendor code), and
 every vendor binary. Code: MIT (`LICENSE`). Text: CC BY 4.0.

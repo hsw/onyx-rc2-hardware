@@ -11,9 +11,13 @@ usage: python3 -I tests/test_card_layout.py STAGE2_BIN RAMDISK WORKDIR [SINGLE_C
 Checks:
   - data-layout card built twice with --rootfs-img: identical sdcard.img; MBR entries; manifest hashes recomputed
   - p1: grown to 65536 blocks of 4 KiB, label rc2root, e2fsck -fn clean, test file intact, shrink path, refusals
-  - p2: tests/check_fat32.py --empty; fsck.fat -n; mdir (label, empty); mcopy round trip + fsck.fat -n (SKIP without them)
-  - --data-img: the empty p2 gives the same card; a filled one lands byte for byte; wrong size/label refused
+  - the fat32.py p2 (for --data-img): tests/check_fat32.py --empty; fsck.fat -n; mdir (label, empty); mcopy round trip + fsck.fat -n (SKIP without them)
+  - --data-img: the empty p2 gives the format-on-write image + that p2 (full 2 GB image); a filled one lands byte for byte; wrong size/label refused
   - mbrguard.py on old-layout vs new-layout sectors; write-card.sh refusals (bad mode, --rootfs on a single-layout card)
+  - data layout: the image ends with p1 (320 MiB), p2 is an MBR entry with the placeholder length and format_on_write;
+    mbrguard.py p2-for-disk / patch / sha / written / --p2-any-length for the p2 length set at write time (2 GB, 32 GiB)
+  - --card-bytes (full images: single layout, --data-img): 4 GiB gives a consistent MBR and manifest; not a multiple of
+    32 KiB, above 32 GiB, too small for the layout, or with the format-on-write data layout: refused
 """
 import hashlib, json, os, shutil, struct, subprocess, sys
 
@@ -66,6 +70,38 @@ def extract(img, off, n, dst):
             pos += len(b)
 
 
+def card_consistent(d, card_bytes, layout):
+    """sdcard.img size, manifest card_bytes/image_bytes/layout/partitions/mbr.table_hex/sha256 and the MBR entries agree.
+    card_bytes None: the data layout with p2 formatted on write (image = first 320 MiB, p2 length = the placeholder)."""
+    img, m = os.path.join(d, 'sdcard.img'), json.load(open(os.path.join(d, 'manifest.json')))
+    fow = card_bytes is None
+    image_bytes = ROOTFS_AREA if fow else card_bytes
+    sectors = (mkcard.DEFAULT_CARD_BYTES if fow else card_bytes) // 512
+    with open(img, 'rb') as f:
+        sec0 = f.read(512)
+    ents = [struct.unpack_from('<B3xII', sec0, 446 + 16 * i + 4)[0:3] for i in range(4)]
+    if layout == 'data':
+        want = [(0x83, P1_LBA, P1_SECTORS), (0x0C, P2_LBA, sectors - P2_LBA)]
+    else:
+        want = [(0x83, P1_LBA, sectors - P1_LBA)]
+    mp = [(int(p['type'], 16), p['lba'], p['sectors']) for p in m['partitions']]
+    bad = [what for what, ok in (
+        ('file size', os.path.getsize(img) == image_bytes),
+        ('manifest card_bytes, image_bytes', m.get('card_bytes') == card_bytes and m.get('image_bytes') == image_bytes),
+        ('p2 format_on_write', not fow or (m['partitions'][1].get('format_on_write') is True
+                                           and m['partitions'][1].get('sha256') is None)),
+        ('manifest layout', m['layout'] == layout),
+        ('MBR entries', ents == want + [(0, 0, 0)] * (4 - len(want))),
+        ('manifest partitions', mp == want and all(p['offset'] == p['lba'] * 512 and p['bytes'] == p['sectors'] * 512
+                                                   for p in m['partitions'])),
+        ('last partition ends at the card end', want[-1][1] + want[-1][2] == sectors),
+        ('mbr.table_hex', m['mbr']['table_hex'] == sec0[446:510].hex()),
+        ('55 AA', sec0[510:512] == b'\x55\xaa'),
+        ('sdcard_img_sha256', m['sdcard_img_sha256'] == mkcard.file_sha(img)),
+        ('rootfs area', layout != 'data' or m['rootfs_area_bytes'] == ROOTFS_AREA)) if not ok]
+    return bad
+
+
 def sha_range(path, off, n):
     return mkcard.range_shas(path, {'r': (off, off + n)})['r']
 
@@ -91,7 +127,7 @@ def main(argv):
                      f"refused: {what} ({(r.stderr + r.stdout).strip().splitlines()[-1] if (r.stderr + r.stdout).strip() else r.returncode})")
 
     # --- mbrguard.py on sectors: works without e2fsprogs
-    old = mkcard.mbr([(0x83, P1_LBA, mkcard.CARD_SECTORS - P1_LBA)])
+    old = mkcard.mbr([(0x83, P1_LBA, mkcard.DEFAULT_CARD_SECTORS - P1_LBA)])
     new = mkcard.mbr([(0x83, P1_LBA, P1_SECTORS), (0x0C, P2_LBA, P2_SECTORS)])
     for n, b in (('old.mbr', old), ('new.mbr', new + b'\xa5' * 32256), ('short.mbr', new[:100])):
         open(os.path.join(work, n), 'wb').write(b)
@@ -114,6 +150,75 @@ def main(argv):
     check(r.returncode == 0 and os.path.getsize(p2e) == P2_BYTES, 'fat32.py writes a p2-sized image')
     r = run([sys.executable, '-I', os.path.join(HERE, 'check_fat32.py'), p2e, '--empty'])
     check(r.returncode == 0, 'check_fat32.py --empty on fat32.py output' + ('' if r.returncode == 0 else '\n' + r.stdout))
+
+    # --- --card-bytes: refusals and consistent layouts at another size (partitions left zero: no e2fsprogs needed)
+    G4 = 4 << 30
+    refused(mk('dX', '--no-partition', '--card-bytes', str(mkcard.DEFAULT_CARD_BYTES + 512)),
+            '--card-bytes not a multiple of 32 KiB (default size + 512)')
+    refused(mk('dX', '--no-partition', '--card-bytes', str(G4 + 4096)), '--card-bytes 4 GiB + 4 KiB')
+    refused(mk('dX', '--no-partition', '--card-bytes', str((32 << 30) + 32768)), '--card-bytes above 32 GiB')
+    refused(mk('dX', '--no-partition', '--data-partition', '--data-img', p2e, '--card-bytes',
+               str(mkcard.min_card_bytes(True) - 32768)),
+            f'--data-img --card-bytes {mkcard.min_card_bytes(True) - 32768} (32 KiB below the FAT32 minimum)')
+    refused(mk('dX', '--no-partition', '--data-partition', '--card-bytes', str(mkcard.DEFAULT_CARD_BYTES)),
+            '--data-partition --card-bytes without --data-img (p2 length comes from the card)')
+    refused(mk('dX', '--no-partition', '--card-bytes', str(256 << 20)), '--card-bytes 256 MiB (single layout)')
+    refused(mk('dX', '--no-partition', '--card-bytes', '0'), '--card-bytes 0')
+    p2g4 = w('p2-4g.img')
+    r = run([sys.executable, '-I', os.path.join(TOOL, 'fat32.py'), p2g4, '--card-bytes', str(G4)])
+    check(r.returncode == 0 and os.path.getsize(p2g4) == G4 - P2_OFF, 'fat32.py --card-bytes 4 GiB: p2-sized image')
+    for what, cb, lay, extra in (('single layout --card-bytes 4 GiB', G4, 'single', ['--card-bytes', str(G4)]),
+                                 ('data layout --data-img --card-bytes 4 GiB', G4, 'data',
+                                  ['--data-partition', '--data-img', p2g4, '--card-bytes', str(G4)]),
+                                 ('data layout, p2 formatted on write', None, 'data', ['--data-partition'])):
+        r = mk('dG', '--no-partition', *extra)
+        bad = card_consistent(w('dG'), cb, lay) if r.returncode == 0 else [r.stderr.strip()]
+        check(not bad, f'{what}: MBR, manifest, sha256 consistent' + (f' (bad: {bad})' if bad else ''))
+
+    # --- p2 length set at write time (mbrguard.py), on the format-on-write image just built (dG)
+    F = w('dG/sdcard.img')
+    with open(F, 'rb') as f:
+        fhead = f.read(32768)
+    for disk, want in ((mkcard.DEFAULT_CARD_BYTES, P2_SECTORS), (32 << 30, (32 << 30) // 512 - P2_LBA),
+                       (31914983424 + 4096, 31914983424 // 512 - P2_LBA)):
+        r = run(g + ['p2-for-disk', str(disk)])
+        check(r.returncode == 0 and r.stdout.strip() == str(want), f'mbrguard p2-for-disk {disk}: {r.stdout.strip()} == {want}')
+    r = run(g + ['p2-for-disk', str(600 << 20)])
+    check(r.returncode == 0, f'mbrguard p2-for-disk 600 MiB: {r.stdout.strip()} (>= the FAT32 minimum)')
+    refused(run(g + ['p2-for-disk', str(512 << 20)]), 'mbrguard p2-for-disk 512 MiB (p2 below the FAT32 minimum)')
+    for disk in (mkcard.DEFAULT_CARD_BYTES, 32 << 30):
+        p2n = (disk // 512) - P2_LBA
+        r = run(g + ['patch', F, w('head.bin'), str(p2n)])
+        ph = open(w('head.bin'), 'rb').read() if r.returncode == 0 else b''
+        ents = [struct.unpack_from('<B3xII', ph, 446 + 16 * i + 4)[0:3] for i in range(4)] if ph else []
+        diff = [i for i in range(32768) if ph and ph[i] != fhead[i]]
+        check(len(ph) == 32768 and ents[:2] == [(0x83, P1_LBA, P1_SECTORS), (0x0C, P2_LBA, p2n)]
+              and all(474 <= i < 478 for i in diff),
+              f'mbrguard patch for a {disk} B card: p2 = {p2n} sectors, only bytes 474..477 differ ({diff[:4]})')
+        hh = hashlib.sha256(ph)
+        with open(F, 'rb') as f:
+            f.seek(32768)
+            hh.update(f.read())
+        r = run(g + ['sha', F, w('head.bin'), str(ROOTFS_AREA)])
+        check(r.stdout.strip() == hh.hexdigest(), f'mbrguard sha: patched image hash ({disk} B card)')
+        open(w('card.bin'), 'wb').write(ph)
+        check(run(g + ['written', w('card.bin'), F, str(p2n)]).returncode == 0, f'mbrguard written: card = patched image ({disk})')
+        check(run(g + ['written', w('card.bin'), F, str(p2n - 64)]).returncode == 1, 'mbrguard written: other p2 length -> 1')
+        r = run(g + [w('card.bin'), F, fhead[446:510].hex(), '--p2-any-length'])
+        check(r.returncode == 0 and f'{p2n} sectors' in r.stdout, f'mbrguard --p2-any-length: card p2 {p2n} sectors -> 0')
+        check(run(g + [w('card.bin'), F]).returncode == (0 if p2n == P2_SECTORS else 1),
+              'mbrguard exact compare: equal only for the placeholder length')
+        r = run(g + ['card-p2', w('card.bin')])
+        check(r.stdout.strip() == str(p2n), f'mbrguard card-p2: {r.stdout.strip()}')
+    check(run(g + ['written', F, F, str(32 << 20)]).returncode == 1, 'mbrguard written: unpatched card MBR -> 1')
+    for what, off, val in (('p2 start LBA', 470, P2_LBA + 64), ('p1 length', 458, P1_SECTORS - 8), ('p2 length 0', 474, 0)):
+        bb = bytearray(ph)
+        struct.pack_into('<I', bb, off, val)
+        open(w('card.bin'), 'wb').write(bb)
+        check(run(g + [w('card.bin'), F, '--p2-any-length']).returncode == 1, f'mbrguard --p2-any-length: other {what} -> 1')
+    check(run(g + [w('old.mbr'), F, '--p2-any-length']).returncode == 1, 'mbrguard --p2-any-length: single-layout card -> 1')
+    check(run(g + [w('old.mbr'), w('old.mbr'), '--p2-any-length']).returncode == 2,
+          'mbrguard --p2-any-length on a single-layout image -> 2')
 
     have_e2 = all(os.access(x, os.X_OK) for x in (mkcard.MKE2FS, mkcard.E2FSCK, mkcard.RESIZE2FS, mkcard.TUNE2FS,
                                                    mkcard.DUMPE2FS))
@@ -145,18 +250,20 @@ def main(argv):
           f'MBR entries {ents[:2]}')
     check(sec0[510:512] == b'\x55\xaa' and sec0[440:444] == b'RC2S' and sec0[446] == 0 and sec0[462] == 0,
           'MBR: 55 AA, disk signature RC2S, no boot flags')
-    check(P2_LBA + P2_SECTORS == mkcard.CARD_SECTORS and P2_LBA % 8192 == 0, 'p2 ends at the card end, 4 MiB aligned')
+    check(P2_LBA + P2_SECTORS == mkcard.DEFAULT_CARD_SECTORS and P2_LBA % 8192 == 0,
+          'p2 placeholder ends at the 2 GB card end, 4 MiB aligned')
     check(m['layout'] == 'data' and m['mbr']['table_hex'] == sec0[446:510].hex(), 'manifest: layout data, mbr.table_hex')
-    h = mkcard.range_shas(A, dict(boot=(0, P1_OFF), area=(0, ROOTFS_AREA), p1=(P1_OFF, ROOTFS_AREA),
-                                  p2=(P2_OFF, P2_OFF + P2_BYTES)))
-    check(m['rootfs_area_bytes'] == ROOTFS_AREA == 335544320 and m['rootfs_area_sha256'] == h['area'],
-          'manifest: rootfs_area = first 335544320 B, sha256 recomputed')
+    check(m['card_bytes'] is None and m['image_bytes'] == ROOTFS_AREA == os.path.getsize(A),
+          'manifest: card_bytes null (set at write time), image_bytes 335544320 = sdcard.img size')
+    h = mkcard.range_shas(A, dict(boot=(0, P1_OFF), area=(0, ROOTFS_AREA), p1=(P1_OFF, ROOTFS_AREA)))
+    check(m['rootfs_area_bytes'] == ROOTFS_AREA == 335544320 and m['rootfs_area_sha256'] == h['area']
+          == m['sdcard_img_sha256'], 'manifest: rootfs_area = the whole image (first 335544320 B), sha256 recomputed')
     check(m['boot_area_sha256'] == h['boot'], 'manifest: boot_area_sha256 recomputed')
     mp = {p['index']: p for p in m['partitions']}
-    check(mp[1]['sha256'] == h['p1'] and mp[2]['sha256'] == h['p2'] and
+    check(mp[1]['sha256'] == h['p1'] and mp[2]['sha256'] is None and mp[2]['format_on_write'] is True and
           (mp[1]['lba'], mp[1]['sectors'], mp[1]['type'], mp[1]['label']) == (P1_LBA, P1_SECTORS, '0x83', 'rc2root') and
           (mp[2]['lba'], mp[2]['sectors'], mp[2]['type'], mp[2]['label']) == (P2_LBA, P2_SECTORS, '0x0c', 'RC2DATA'),
-          'manifest: partitions lba/sectors/type/label/sha256')
+          'manifest: partitions lba/sectors/type/label/sha256, p2 format_on_write')
 
     # --- p1
     p1 = w('p1.ext4')
@@ -170,13 +277,8 @@ def main(argv):
     r = run([debugfs, '-R', 'cat hello.txt', p1])
     check(r.stdout.encode() == HELLO, 'p1: test file from the rootfs intact')
 
-    # --- p2
-    p2 = w('p2.img')
-    extract(A, P2_OFF, P2_BYTES, p2)
-    r = run([sys.executable, '-I', os.path.join(HERE, 'check_fat32.py'), p2, '--empty'])
-    check(r.returncode == 0, 'p2: check_fat32.py --empty' + ('' if r.returncode == 0 else '\n' + r.stdout))
-    check(open(p2, 'rb').read(1 << 20) == open(p2e, 'rb').read(1 << 20) and mkcard.file_sha(p2) == mkcard.file_sha(p2e),
-          'p2 == standalone fat32.py image')
+    # --- p2 for --data-img (fat32.py, mkdata.sh); the card's own p2 is formatted at write time (test_format_data.py)
+    p2 = p2e
     fsck, mdir, mcopy = tool('fsck.fat'), tool('mdir'), tool('mcopy')
     env = dict(os.environ, MTOOLS_SKIP_CHECK='1')
     if fsck:
@@ -204,10 +306,24 @@ def main(argv):
     else:
         skip('mdir/mcopy round trip: mtools not installed')
 
+    # --- --data-img --card-bytes 4 GiB with real partitions: consistent, p2 = the fat32.py image, rootfs area after the MBR
+    r = mk('dG', '--data-partition', '--rootfs-img', small, '--data-img', p2g4, '--card-bytes', str(G4))
+    bad = card_consistent(w('dG'), G4, 'data') if r.returncode == 0 else [r.stderr.strip()]
+    if not bad:
+        G = w('dG/sdcard.img')
+        if sha_range(G, P2_OFF, G4 - P2_OFF) != mkcard.file_sha(p2g4):
+            bad.append('p2 != the --data-img')
+        if sha_range(G, 512, ROOTFS_AREA - 512) != sha_range(A, 512, ROOTFS_AREA - 512):
+            bad.append('rootfs area after the MBR differs from the format-on-write image')
+    check(not bad, '--data-img --card-bytes 4 GiB with partitions: consistent, p2 = the FAT32 image, rootfs area = dA'
+          + (f' (bad: {bad})' if bad else ''))
+
     # --- --data-img
     r = mk('dC', '--data-partition', '--rootfs-img', small, '--data-img', p2)
-    check(r.returncode == 0 and run(['cmp', A, w('dC/sdcard.img')]).returncode == 0,
-          '--data-img with the empty p2: same sdcard.img')
+    C = w('dC/sdcard.img')
+    check(r.returncode == 0 and os.path.getsize(C) == mkcard.DEFAULT_CARD_BYTES
+          and sha_range(C, 0, ROOTFS_AREA) == mkcard.file_sha(A) and sha_range(C, P2_OFF, P2_BYTES) == mkcard.file_sha(p2),
+          '--data-img with the empty p2: full 2 GB image = the format-on-write image + the fat32.py p2')
     if os.path.exists(filled):
         r = mk('dC', '--data-partition', '--rootfs-img', small, '--data-img', filled)
         C = w('dC/sdcard.img')
@@ -266,7 +382,7 @@ def main(argv):
             s0 = f.read(512)
         check(ms['layout'] == 'single' and 'rootfs_area_sha256' not in ms and ms['mbr']['table_hex'] == old[446:510].hex()
               and s0[446:512] == old[446:512] and len(ms['partitions']) == 1
-              and ms['partitions'][0]['sectors'] == mkcard.CARD_SECTORS - P1_LBA,
+              and ms['partitions'][0]['sectors'] == mkcard.DEFAULT_CARD_SECTORS - P1_LBA,
               'single layout (default): one 0x83 partition to the card end, manifest without rootfs area')
         check(run(g + [os.path.join(single, 'sdcard.img'), A]).returncode == 1,
               'mbrguard: single-layout card.img vs data-layout image -> 1')
@@ -282,11 +398,11 @@ def main(argv):
 
 
 def finish(work):
-    for n in ('dA', 'dB', 'dC', 'dX'):
+    for n in ('dA', 'dB', 'dC', 'dX', 'dG'):
         p = os.path.join(work, n, 'sdcard.img')
         if os.path.exists(p):
             os.remove(p)
-    for n in ('p1.ext4', 'p2.img', 'p2-empty.img', 'p2-filled.img', 'bad.img', 'big.ext4', 'small.ext4', 'other.ext4'):
+    for n in ('p1.ext4', 'p2.img', 'p2-4g.img', 'head.bin', 'card.bin', 'p2-empty.img', 'p2-filled.img', 'bad.img', 'big.ext4', 'small.ext4', 'other.ext4'):
         p = os.path.join(work, n)
         if os.path.exists(p):
             os.remove(p)

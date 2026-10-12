@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Deterministic FAT32 writer for the sdboot data partition (p2, label RC2DATA). Stdlib only, no mkfs tool: the same
-bytes on macOS and Linux.
+"""FAT32 for the sdboot data partition (p2, label RC2DATA). Stdlib only.
+- format_geometry/check_format: the geometry formatdata.py gives newfs_msdos when write-card.sh formats p2 on the card
+  (the default data layout) and the check of the boot sector it wrote back.
+- build: a deterministic FAT32 image for mkcard.py --data-img (no mkfs tool: the same bytes on macOS and Linux).
 
-Geometry (512-byte sectors, 4 KiB clusters, two FATs; README.md "Card layout"):
+build() geometry (512-byte sectors, 4 KiB clusters, two FATs; README.md "Card layout"):
   sector 0          boot sector (BPB + FAT32 EBR), backup at sector 6
   sector 1          FSInfo, backup at sector 7
   sector R          FAT 1, then FAT 2; R and the FAT size are multiples of 8 sectors (4 KiB) and the data region
@@ -12,8 +14,9 @@ Geometry (512-byte sectors, 4 KiB clusters, two FATs; README.md "Card layout"):
 Fixed: volume serial 0x52433244 ("RC2D" read as big-endian bytes, stored little endian), label RC2DATA, OEM name MSWIN4.1,
 timestamps 2026-10-10 00:00:00.
 
-usage: fat32.py OUT [--sectors N] [--hidden N]   writes an empty data-partition image (sparse file of N sectors; default the
-       2 GB card's p2 as mkcard.py places it: 3 207 168 sectors at LBA 655 360). mkdata.sh fills such an image with mtools.
+usage: fat32.py OUT [--sectors N | --card-bytes N] [--hidden N]   writes an empty data-partition image (sparse file of N
+       sectors; default the 2 GB card's p2 as mkcard.py places it: 3 207 168 sectors at LBA 655 360; --card-bytes: p2 of
+       mkcard.py --data-partition --data-img IMG --card-bytes N). mkdata.sh fills such an image with mtools.
 """
 import argparse, os, struct, sys
 
@@ -29,21 +32,56 @@ MEDIA = 0xF8
 FAT_DATE = ((2026 - 1980) << 9) | (10 << 5) | 10   # 2026-10-10
 FAT_TIME = 0                              # 00:00:00
 EOC = 0x0FFFFFFF
+MIN_SECTORS = DATA_ALIGN + (65525 + 1) * SPC   # smallest partition with > 65525 clusters (FAT32 by the cluster-count rule)
 
 
-def geometry(total):
-    """Reserved sectors, FAT size, data start, cluster count for a partition of `total` sectors."""
+def geometry(total, spc=SPC, fat_align=8):
+    """Reserved sectors, FAT size, data start, cluster count for a partition of `total` sectors: clusters of `spc`
+    sectors, FAT size a multiple of `fat_align` sectors, data region at a multiple of 4 MiB."""
     data = DATA_ALIGN
     while data < total:
-        clusters = (total - data) // SPC
+        clusters = (total - data) // spc
+        if clusters <= 65525:
+            break
         fat = -(-(clusters + 2) * 4 // SECTOR)
-        fat = -(-fat // 8) * 8                       # FAT size in whole 4 KiB pages
+        fat = -(-fat // fat_align) * fat_align       # FAT size in whole fat_align pages
         reserved = data - NFATS * fat
         if reserved >= RESERVED_MIN:
-            assert reserved % 8 == 0 and clusters > 65525, (reserved, clusters)
+            assert reserved % fat_align == 0, (reserved, fat_align)
             return dict(reserved=reserved, fat_sectors=fat, data_start=data, clusters=clusters)
         data += DATA_ALIGN
+    raise ValueError(f'partition of {total} sectors too small for FAT32 with {spc * SECTOR // 1024} KiB clusters')
+
+
+FORMAT_ALIGN = 64                         # 32 KiB: the card's write/erase alignment
+
+
+def format_geometry(total):
+    """Geometry for p2 formatted on the card (formatdata.py, newfs_msdos): the largest cluster of 32, 16, 8 or 4 KiB that
+    keeps FAT32 (> 65525 clusters), reserved area and both FATs in whole 32 KiB units, data region at a 4 MiB multiple."""
+    for spc in (64, 32, 16, 8):
+        try:
+            return dict(geometry(total, spc, FORMAT_ALIGN), spc=spc)
+        except ValueError:
+            pass
     raise ValueError(f'partition of {total} sectors too small for FAT32')
+
+
+def check_format(b, total, hidden, g):
+    """Problems in a boot sector written by newfs_msdos for format_geometry() `g` (empty list = as intended)."""
+    bad = check_boot_sector(b, total)
+    (bps, spc, rsvd, nfats, rootent, tot16, media, fat16, _spt, _heads, hid, tot32, fatsz) = struct.unpack_from(
+        '<HBHBHHBHHHIII', b, 11)
+    want = dict(bps=512, spc=g['spc'], reserved=g['reserved'], nfats=NFATS, rootent=0, tot16=0, fat16=0, hidden=hidden,
+                total=total, fat=g['fat_sectors'])
+    got = dict(bps=bps, spc=spc, reserved=rsvd, nfats=nfats, rootent=rootent, tot16=tot16, fat16=fat16, hidden=hid,
+               total=tot32, fat=fatsz)
+    bad += [f'{k} {got[k]} != {v}' for k, v in want.items() if got[k] != v]
+    if rsvd % FORMAT_ALIGN or (rsvd + fatsz) % FORMAT_ALIGN or (rsvd + NFATS * fatsz) % FORMAT_ALIGN:
+        bad.append(f'FATs at {rsvd}/{rsvd + fatsz}, data at {rsvd + NFATS * fatsz}: not 32 KiB aligned')
+    if hid % FORMAT_ALIGN:
+        bad.append(f'partition start {hid} not 32 KiB aligned')
+    return bad
 
 
 def label11(s):
@@ -139,12 +177,19 @@ def check_boot_sector(b, total):
 
 def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import mkcard   # the card layout (P2_LBA, P2_SECTORS) lives there
+    import mkcard   # the card layout (P2_LBA, DEFAULT_P2_SECTORS) lives there
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('out')
-    ap.add_argument('--sectors', type=int, default=mkcard.P2_SECTORS)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument('--sectors', type=int, default=mkcard.DEFAULT_P2_SECTORS)
+    g.add_argument('--card-bytes', type=int, help='p2 of a data-layout card of this size (mkcard.py --card-bytes)')
     ap.add_argument('--hidden', type=int, default=mkcard.P2_LBA, help='BPB hidden sectors = partition start LBA')
     a = ap.parse_args()
+    if a.card_bytes is not None:
+        err = mkcard.card_error(a.card_bytes, True)
+        if err:
+            sys.exit('REFUSE: ' + err)
+        a.sectors = a.card_bytes // SECTOR - mkcard.P2_LBA
     chunks, info = build(a.sectors, a.hidden)
     with open(a.out, 'wb') as f:
         f.truncate(a.sectors * SECTOR)

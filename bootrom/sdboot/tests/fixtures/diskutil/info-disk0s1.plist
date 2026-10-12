@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BusProtocol</key>
+	<string>Apple Fabric</string>
+	<key>Content</key>
+	<string>Apple_APFS_ISC</string>
+	<key>DeviceIdentifier</key>
+	<string>disk0s1</string>
+	<key>DeviceNode</key>
+	<string>/dev/disk0s1</string>
+	<key>Ejectable</key>
+	<false/>
+	<key>Internal</key>
+	<true/>
+	<key>MediaName</key>
+	<string></string>
+	<key>MountPoint</key>
+	<string></string>
+	<key>ParentWholeDisk</key>
+	<string>disk0</string>
+	<key>Removable</key>
+	<false/>
+	<key>RemovableMedia</key>
+	<false/>
+	<key>Size</key>
+	<integer>524288000</integer>
+	<key>TotalSize</key>
+	<integer>524288000</integer>
+	<key>WholeDisk</key>
+	<false/>
+</dict>
+</plist>
