@@ -1,0 +1,70 @@
+#!/sbin/busybox sh
+# SPDX-License-Identifier: MIT
+# RC2 sdboot test ramdisk ("m0"): PID 1 after stage2 booted the stock kernel from the microSD card.
+# Goal of this ramdisk: show that the kernel and the ramdisk run, with the kernel log, /proc/cmdline and the stage2 log.
+# It touches NO storage: no insmod (never rk30xxnand_ko: that would bring up the eMMC), no mount of any block device, no
+# write anywhere but tmpfs. The stock kernel itself has no eMMC driver without that module.
+# The panel text comes from /sbin/ebc-console if the ramdisk has one (a small text console on /dev/ebc, not part of
+# this repository); without it only the LED heartbeat shows that /init runs. ebc-console is started ONCE and never
+# signalled (a signal while it waits in the EBC driver's GET_EBC_BUFFER ioctl can overflow the stock kernel stack).
+# PID 1 never exits (that would panic the kernel).
+# Exit: pull the card, then the reset pinhole (the next boot is the eMMC, unchanged).
+B=/sbin/busybox
+$B mount -t proc proc /proc
+$B mount -t sysfs sysfs /sys
+$B mount -t devtmpfs devtmpfs /dev
+$B mount -t tmpfs -o mode=1777 tmpfs /tmp
+log() { echo "sdinit: $*" >/dev/kmsg; }
+log "RC2 sdboot m0 ramdisk: kernel and ramdisk are running from the microSD card; no storage access"
+
+# stage2 log (stage2/bootinfo.h: LOG_BASE 0x7fff0000, header 8 words, then text) through devmem (mmap of
+# /dev/mem; a read() of that reserved window would fail: it is not kernel RAM)
+s2log() {
+  base=$((0x7fff0000))
+  magic=$($B devmem $base 32)
+  if [ "$magic" != 0x474C3253 ]; then echo "no stage2 log at 0x7fff0000 (magic $magic)"; return; fi
+  len=$(($($B devmem $((base + 8)) 32)))
+  echo "stage2 log: stage $($B devmem $((base + 12)) 32) fail $($B devmem $((base + 16)) 32) len $len"
+  [ "$len" -gt 4000 ] && len=4000
+  i=0; s=""
+  while [ $i -lt $len ]; do
+    w=$($B devmem $((base + 32 + i)) 32)
+    for sh in 0 8 16 24; do
+      c=$(( (w >> sh) & 255 ))
+      [ $c -ne 0 ] && s="$s\\0$((c >> 6))$(((c >> 3) & 7))$((c & 7))"
+    done
+    i=$((i + 4))
+  done
+  printf '%b\n' "$s"
+}
+status() {
+  {
+    echo "uptime $($B cat /proc/uptime)  cpus $($B grep -c ^processor /proc/cpuinfo)"
+    echo "cmdline: $($B cat /proc/cmdline)"
+    echo "mmc: $($B awk '/mmcblk/ {printf "%s %s KiB; ", $4, $3}' /proc/partitions)"
+  } >/tmp/status.new 2>&1
+  $B mv /tmp/status.new /tmp/status.txt
+}
+status
+echo "reading the stage2 log ..." >/tmp/stage2.txt
+if [ -x /sbin/ebc-console ]; then
+  $B setsid $B sh -c "exec /sbin/ebc-console -i 10 -s 2 -L 12 -t 'RC2 SD boot m0: kernel + ramdisk from microSD' -H /tmp/status.txt -f /tmp/stage2.txt </dev/null >>/tmp/ebc-console.log 2>&1" &
+  log "ebc-console started (pid $!)"
+else
+  log "no /sbin/ebc-console: nothing on the panel; LED heartbeat only"
+fi
+s2log >/tmp/stage2.new 2>&1
+$B mv /tmp/stage2.new /tmp/stage2.txt
+log "stage2 log copied to /tmp/stage2.txt"
+
+# heartbeat on the status LED (leds-ctl, GPIO2_B7): 1 s on / 1 s off = PID 1 alive; refresh the status every 10 s
+L=/sys/class/leds-ctl/leds-ctl/ledsctl
+n=0
+while :; do
+  [ -w $L ] && echo 1 >$L
+  $B sleep 1
+  [ -w $L ] && echo 0 >$L
+  $B sleep 1
+  n=$((n + 1))
+  [ $((n % 5)) = 0 ] && status
+done

@@ -36,6 +36,8 @@ and never returns to the next medium on its own. You have to reset (pinhole or p
 
 **Prerequisite that only hardware can check:** whether the card has power at ROM time. The SD rail is ACT8931 LDO3, and the ROM
 does not touch the PMIC. On the C67ML sibling an SD card boots (reported by another developer), which suggests LDO3 is on at power-up there [VERIFY on the RC2].
+Checked since on the RC2: the ROM takes an SDSC card on a warm reset and on a cold power-on with the charger attached, but skipped it
+on a cold power-on on battery. [`sdboot/`](sdboot/README.md) boots the stock kernel from such a card.
 
 ## 1. Boot-media order (Q1)
 
@@ -287,6 +289,8 @@ Complete list of commands the ROM can issue:
 ACMD42 and ACMD6 change only volatile card state. **The ROM never writes any storage.** Download mode writes only to SRAM/DDR.
 
 ## 7. Hardware-only questions and a safe test
+
+The card tests below have since run on the RC2. Results, and a working SD boot of the stock kernel: [`sdboot/`](sdboot/README.md).
 
 **Still [VERIFY]:**
 
