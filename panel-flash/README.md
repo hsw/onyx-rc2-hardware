@@ -134,6 +134,11 @@ Its panel-flash code is in `drivers/video/mxc/mxc_epdc_fb_lab126.c` (GPL-2.0+, A
 | Panel mode | chosen by the **first three characters of the barcode** from a table of known prefixes | the RC2 barcode prefix (`ENT`) is **not** in Amazon's table: that kernel would fall back to its default panel mode. Whatever lot this panel is, the Kindle firmware does not know it |
 | VCOM | the passport string is converted and written to the PMIC at every power-up, as is (+0.25 V only when the WBF header's `vcom_shifted` is set) | stock ONYX writes passport − 0.40 V into the PMIC EEPROM once; see [`../panel/README.md`](../panel/README.md) |
 
+The Kindle firmware relies on this flash for its waveform: the PW3 update image 5.16.2.1.1 carries no waveform file at all. At
+every boot `/etc/upstart/display` checks its cache; if it is empty, it reads the WBF through `/proc/eink/panel/waveform/data`,
+converts it with `parse_waveform` (userspace) and stores the result on a small partition, from where udev hands it to the
+driver as firmware [CONFIRMED in the update image, read without running anything from it].
+
 Disabled code in the Kindle kernel waits for E Ink to "finalize the flash spec" with the panel resolution (and VGH and the
 logic level) in it, so the format comes from E Ink and was still growing then; today the Kindle picks those from the barcode
 table. For a mainline device tree this suggests an nvmem layout of the E Ink passport on a `jedec,spi-nor`

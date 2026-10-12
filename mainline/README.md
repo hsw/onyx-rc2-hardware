@@ -75,17 +75,23 @@ register-level description of the RK3026 EBC and a sketch of a minimal in-kernel
 - **Interfaces still missing** for a SoC E-Ink controller: an update-mode property on the plane, a defined meaning of the commit
   event as "update finished on the panel", a simple LUT-firmware format, a binding for the EBC and one for E Ink panels (timings,
   `vcom`/rail supplies, thermal zone, size). The image buffer (`DRM_FORMAT_R4`/`R8`) and the update area (`FB_DAMAGE_CLIPS`)
-  already exist [CONFIRMED-src].
+  already exist [CONFIRMED-src]. The Kindle's EPDC driver has the completion part as an ioctl: `MXCFB_WAIT_FOR_UPDATE_COMPLETE`
+  wakes when the update's LUT has finished on the panel [CONFIRMED-src].
 - **Waveform conversion outside the kernel has an open example:** [epdiy](https://github.com/vroland/epdiy) (LGPL-3.0) turns a
   `.wbf` into tables with its fork of inkwave (WBF → JSON) and `scripts/waveform_hdrgen.py` (JSON → a C header per mode and
   temperature range). The same split fits the EBC: a userspace tool (for the RC2 file, the decoder in
   [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform)) writes plain LUT tables that the kernel loads with
-  `request_firmware()`. Amazon's Kindle kernel works the same way: it loads pre-converted waveform tables and never parses a WBF
-  stream.
+  `request_firmware()`. The Kindle Paperwhite 3 does exactly this: its firmware ships no waveform file. At boot
+  `/etc/upstart/display` reads the panel's own WBF from the panel flash (`/proc/eink/panel/waveform/data`), converts it in
+  userspace (`parse_waveform`) and caches the result; udev serves it to the driver's `request_firmware()`, and the kernel never
+  parses a WBF stream [CONFIRMED in the 5.16.2.1.1 update image and kernel source].
 - **Panel data in the panel:** the RC2's panel SPI flash uses E Ink's generic layout, which the Kindle Paperwhite 3 kernel reads
   too ([`../panel-flash/README.md`](../panel-flash/README.md)), so the passport (VCOM, part number, waveform name) can be described
   once as an nvmem layout for any E Ink panel. The TPS65185 driver has no binding for the power-up sequence registers that stock
   sets ([`../panel/README.md`](../panel/README.md) §3).
+- **Two traps before the first good picture:** without `GRF_LVDS_CON0` bit 0 the EBC data lines never reach the panel pads
+  ([`../soc/README.md`](../soc/README.md) §4, [onyx-rc2-ebc `driver/registers.md`](https://github.com/hsw/onyx-rc2-ebc/blob/main/driver/registers.md));
+  the waveform is made for 85 Hz while stock drives the panel at 83.64 Hz ([`../panel/README.md`](../panel/README.md) §1).
 
 ## 4. Order that makes sense
 

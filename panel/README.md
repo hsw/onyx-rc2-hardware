@@ -71,7 +71,8 @@ arithmetic].
   designed. Stock's extra 7 clocks per line (LSL +4, LEL +3 against Kindle) have no known reason [VERIFY]. The Kindle
   numbers are a candidate to try, not a recommendation: change the timing only with a look at the panel (ghosting, grey steps)
   [VERIFY].
-- The gate-clock start differs by 4.5 clocks; the EPDC and the EBC may count it from different points [VERIFY].
+- The gate-clock start: Kindle `gdclk_offs` 225 is 112.5 SDCLK under the /2 reading above, stock starts at LSL + `gdck_sta` =
+  117. The 4.5-clock gap is this arithmetic, not a Kindle field; the EPDC and the EBC may count it from different points [VERIFY].
 - Kindle's mode for 1072×1448 panels scanned along the short side (`EN060TC1_1CE`, with `FLAG_SCAN_X_INVERT`) is a different
   wiring of the same geometry and does not apply here.
 
@@ -129,8 +130,9 @@ ms).
   Stock's order has worked on these devices for years; which order the panel's maker requires is not public. Options for a port:
   copy stock (optional `ti,upseq`-style properties, a small driver patch), or keep TI's defaults and compare on the panel
   [VERIFY].
-- Kindle cannot help here: its MAX77696 PMIC has a hardware sequencer whose configuration register is written with a value whose
-  bit meaning is not public.
+- Kindle cannot help here: its MAX77696 PMIC has a hardware sequencer register (`EPDSEQ`, 0x69), but the Kindle kernel only
+  defines it (`include/max77696_registers.h`) and never writes it, so the PMIC runs its own default order, which is not public
+  [CONFIRMED-src for the kernel; U-Boot not checked].
 
 ## 4. VCOM
 
