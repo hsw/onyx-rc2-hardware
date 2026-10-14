@@ -15,7 +15,7 @@ Raw captures (excerpts, no serials or personal data) are in [`proc/`](proc/).
 | Kernel | Linux 3.0.36+ #1 SMP PREEMPT Tue Nov 7 21:44:55 CST 2017, gcc 4.6.x-google ([`proc_version.txt`](proc/proc_version.txt)) |
 | Loader (from cmdline) | bootver=2016-04-12#2.32, firmware_ver=5.0.0 |
 | PCB | pcb_ver=2 (= V1.73, see [`../board/README.md`](../board/README.md) §5) |
-| Storage | onyx_emmc=1 (eMMC through the rk29xxnand / `rk30xxnand_ko` MTD layer) |
+| Storage | onyx_emmc=1 (eMMC through the rk29xxnand / `rk30xxnand_ko` MTD layer; how the module drives the eMMC: [below](#rk30xxnand_ko-and-the-emmc)) |
 | waveform_addr | 0x7ff00000 (from cmdline) |
 | initrd | 0x62000000, size 0x00130000 (runtime) |
 | console | ttyFIQ0 |
@@ -38,6 +38,8 @@ Raw captures (excerpts, no serials or personal data) are in [`proc/`](proc/).
 | mtd9 | user | 0x622000 | to the end | 4415488 KiB ≈ 4.21 GiB | 0xC4400000 |
 
 Sectors 0x0–0x2000 (the first 4 MiB) hold the loader/IDB area and `parameter`; they are not exposed as an MTD partition.
+The eMMC module adds a firmware offset of 0x2000 sectors to every MTD block address it passes to the eMMC
+([below](#rk30xxnand_ko-and-the-emmc)).
 The partitions `parameter`, `uboot`, `charge`, `cust`, `custom` (listed in the public C67ML TWRP device tree,
 [AnClark/twrp_device_onyx_c67ml_carta2](https://github.com/AnClark/twrp_device_onyx_c67ml_carta2)) **do not exist on this device**:
 the RC2 1.8.2 uses a different (later) layout.
@@ -62,7 +64,7 @@ the RC2 1.8.2 uses a different (later) layout.
 | RTC | hym8563 @ i2c0-0x51 | sysfs |
 | GPU | mali + ump (modules) | /proc/modules |
 | VPU/IPP | vpu_service, rk29_ipp (modules) | /proc/modules |
-| NAND/eMMC | rk30xxnand_ko (module) | /proc/modules |
+| NAND/eMMC | rk30xxnand_ko (module): eMMC controller at 0x1021C000, IRQ 48, 8-bit bus, data through the PL330 DMA ([below](#rk30xxnand_ko-and-the-emmc)) | /proc/modules, boot log |
 | Bluetooth | rtk_btusb (module) | /proc/modules |
 | Wi-Fi | Realtek modules in /system/lib/modules: 8188eu, 8189es, 8192cu, 8723as/au/bu; the chip is an RTL8723BU (USB `0bda:b720`, `8723bu.ko`) | ls, logs |
 | HAL | gralloc.rk30board.so, hwcomposer.rk30board.so, gpu.rk30board.so, lights.rk30board.so, power.rk3026.so, sensors.rk30board.so, camera.rk30board.so | /system/lib/hw |
@@ -118,9 +120,58 @@ Files: `init`, `init.rc`, `init.rk30board.rc`, `init.rk30board.usb.rc`, `init.rk
   SPI flash is not used for display [CONFIRMED by disassembly and log]. Format and decoder:
   [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform).
 - **`rk30xxnand_ko.ko.3.0.36+`**: vermagic `3.0.36+ SMP preempt mod_unload ARMv7`, contains the eMMC adapter
-  (`drivers/mtd/rknand/EMMC/hw_SDPlatAdapt.c`), which provides the MTD layer on top of eMMC (`onyx_emmc=1`).
+  (`drivers/mtd/rknand/EMMC/hw_SDPlatAdapt.c`), which provides the MTD layer on top of eMMC (`onyx_emmc=1`). Embedded
+  versions: `rknand_buffer.c version: 4.40 20130830`, `FTL version: 5.0.31 20160325`; not stripped. Static analysis:
+  [below](#rk30xxnand_ko-and-the-emmc).
 - `ro.bootmode=unknown` on the running system, so init uses `init.rk30board.bootmode.unknown.rc` (the MTD/rk29xxnand branch), not
   the emmc variant, and `/dev/block/mtdblock*` are mounted.
+
+## `rk30xxnand_ko` and the eMMC
+
+The module has no public source. What follows comes from static analysis of the stock module (disassembly with
+relocations, nothing executed) and the stock boot log. [CONFIRMED] = disassembly and log agree; [STRONG] = disassembly only.
+Addresses are offsets in the module's `.text`.
+
+- **Kernel side.** The module registers no MTD or block device itself: the wrapper built into the stock kernel
+  (`drivers/mtd/rknand/rknand_base_ko.c`, platform driver and MTD `rk29xxnand`, `mtdparts=` from the cmdline) hands it its
+  `struct rknand_info` through `get_rknand_device`, and the module fills in the FTL read/write/sync/suspend hooks. The
+  field offsets after the chip structure are 4 bytes larger than the public header suggests (SMP + PREEMPT ARM enables
+  `GENERIC_LOCKBREAK`) [STRONG].
+- **Medium choice.** At load time the module reads the `SYSD` block that the loader leaves in the NAND controller's SRAM:
+  boot medium 2 and firmware offset 0x2000 on the RC2 (`gBootMedia = 2 gSdmmcFwPartOffset =2000`). Raw-NAND
+  initialisation fails and it falls back to the eMMC (`CardId = 2`, `SdmmcInit ret = 0!`) [CONFIRMED]. Every MTD block
+  address is then shifted by **0x2000 sectors (4 MiB)** before it reaches the eMMC [CONFIRMED].
+- **Controller.** The Synopsys-style SD/MMC controller `emmc` at **0x1021C000** (mapped by a constant address, not from
+  platform resources), **IRQ 48** (`emmc`), clock `emmc` set to 50 MHz plus `hclk_emmc`; the log then reports
+  `EmmcBus_khz = 96000`, an **8-bit** bus and 0xE90000 user sectors (7456 MiB) [CONFIRMED]. The module has its own SD/MMC
+  stack, not the kernel's `mmc_core`. It **also requests IRQ 50 (`nandc`)** even on this eMMC book; the line stays at
+  zero in [`proc_interrupts.txt`](proc/proc_interrupts.txt) [CONFIRMED].
+- **DMA.** Transfers use the SoC's PL330 through the stock kernel's `rk29_dma_*` API, not dmaengine
+  ([`../soc/README.md`](../soc/README.md) §1.1). The channel number **14 (`DMACH_EMMC`) is hard-coded** (request line 12);
+  configuration 4-byte unit, burst 16; the peripheral address is the controller FIFO **0x1021C200** (base + 0x200). Per
+  transfer: `rk29_dma_devconfig` (direction, FIFO) → `rk29_dma_enqueue` → set the controller's external-DMA enable
+  (`CTRL` bit 5) → `rk29_dma_ctrl(START)` → then the command; afterwards `rk29_dma_ctrl(STOP)` and the enable bit is
+  cleared (`SDPAM_DMAStart` @0x12d18, `SDC_BusRequest` @0x131d4, `SDPAM_DMAStop` @0x12e58) [STRONG].
+- **Cache maintenance only through `___dma_single_cpu_to_dev`/`___dma_single_dev_to_cpu`** (before and after the
+  transfer). In the 3.0 kernel these do both L1 and the PL310 L2 themselves; the module imports no `outer_cache`, no
+  `dma_map_*`, no `dma_alloc_coherent` [STRONG].
+- **Physical address computed inline** as VA − 0x60000000 (PAGE_OFFSET 0xC0000000, RAM at 0x60000000), with **no lowmem
+  check**; a vmalloc buffer would get a wrong address. In practice reads of whole 8 KiB pages go straight into the
+  caller's (lowmem) buffer, partial pages through a 256 KiB read cache, and every write is first copied into the wrapper's
+  static write-back pool and written later by a kernel thread. The RC2 has no highmem [STRONG].
+- **Completion by the eMMC interrupt**: the IRQ handler completes the command and the data-transfer-over (DTO) events;
+  the data wait has no timeout. The PL330 completion callback only sets a variable nobody reads [STRONG]. On an error the
+  module re-initialises the controller and retries up to 3 times.
+- **PIO for short transfers**: writes up to 1 KiB and reads up to 512 B go through the FIFO by the CPU, without DMA or
+  cache work [STRONG].
+- The raw-NAND path (NandC v6 with its own bus-master DMA, the FTL with garbage collection and read-retry tables) is in the
+  module but not executed on the RC2.
+- **For a port:** the module is bound to the stock kernel by the `rk29_dma_*` channel numbers, the internal
+  `___dma_single_*` helpers, the fixed VA→PA formula and the `rknand_info` layout; it cannot be moved to another kernel.
+  In mainline the eMMC is `dw_mmc` (`rk3036.dtsi` `emmc` node with `dmas = <&pdma 12>`), and the 0x2000-sector offset
+  has to be added to the stock partition offsets [STRONG].
+- Open [VERIFY]: whether the controller has the dw_mmc internal DMA (IDMAC) as well; which bus mode (HS SDR or DDR)
+  the module picks at 96 MHz.
 
 ## `backup` partition = factory RKAF package [CONFIRMED]
 

@@ -39,6 +39,9 @@ Confidence marks on this page:
   instead of three.
 - **Interrupts:** the vendor Linux number is the GIC INTID, so in a device tree use **`GIC_SPI (n − 32)`**. EBC 81 →
   `GIC_SPI 49` (§2).
+- **DMA:** one PL330 at 0x20078000, the same node as `rk3036.dtsi`/`rk3128.dtsi` and the same request lines for the shared
+  peripherals (eMMC = line 12). The
+  stock kernel has no dmaengine; its drivers use the vendor `rk29_dma_*` API (§1.1).
 - **CRU:** the register layout and the PLL type are those of `clk-rk3036.c` (`RK2928_*` offsets, `pll_rk3036`), but the RK3026
   has **four PLLs** (CPLL too), 1-bit parent muxes, different fields for SDIO/eMMC/`uart_pll`, CPU1 reset at bit 4, and the EBC
   clock. It needs its own `clk-rk3026.c`; the PLL part can follow `clk-rk3128.c` (§3).
@@ -116,6 +119,68 @@ The memory the stock kernel reserves (for `reserved-memory`, if the layout is ke
 The vendor kernel's virtual addresses (`0xFEA…` = phys + 0xEEA00000, `0xFED…` = phys + 0xDED00000, IMEM at 0xFEF00000) only
 matter for reading the stock disassembly. **The EBC is not in the static map**: its driver uses `ioremap`, so there is no fixed
 virtual EBC address.
+
+### 1.1 DMA controller (PL330)
+
+Static analysis of the stock kernel Image, checked against the vendor 3.0 source (RY `arch/arm/common/pl330.c`,
+`arch/arm/plat-rk/dma-pl330.c`, `plat/dma-pl330.h`; no difference found in the functions compared) and the device.
+
+- **One DMA controller**: an ARM PL330 at 0x20078000 (16 KiB), IRQ 32/33 (`GIC_SPI 0/1`), platform device `rk29-pl330`
+  from `mach-rk2928/devices.c` (also used for the RK3026). The boot log reports `Num_Chans-8 Num_Peri-14 Num_Events-16`
+  (data buffer 64 × 8 bytes); `/proc/interrupts` shows both lines, only IRQ 32 counting [CONFIRMED-device]. The driver
+  never enables a clock and relies on the CRU reset default (no `clk_get`/`clk_enable` in `pl330_probe` @0xc045f810)
+  [CONFIRMED-dis].
+- **Stock driver**: Rockchip's two layers, `common/pl330.c` (PL330 core, microcode generation) and `plat-rk/dma-pl330.c`
+  (the S3C-style `rk29_dma_*` API). **There is no dmaengine**: no `dma_async_*`, `dma_request_channel` or
+  `drivers/dma/pl330.c` symbols, so `CONFIG_DMADEVICES` is off [CONFIRMED-dis]. In-kernel users: `rk29_sdmmc` (microSD,
+  SDIO), the SPI master (`rk29_spim`, panel flash) and I2S/PCM; UART, EBC and LCDC do not use DMA. The closed NAND/eMMC
+  module uses it for the eMMC ([`../device/README.md`](../device/README.md#rk30xxnand_ko-and-the-emmc)).
+- **Microcode**: peripheral transfers are always burst handshakes without `FLUSHP` (the vendor source has it commented
+  out "for sdmmc sdio"); memory-to-memory uses read/write barriers. A buffer of 128 bytes per request (mainline: 256)
+  [CONFIRMED-dis].
+
+Request lines (the vendor platform data `rk29_pl330_platdata.peri[]` in the Image @0xc0a6ff04, identical to RY)
+[CONFIRMED-dis], against mainline v7.2 `dmas = <&pdma n>` [CONFIRMED-src]:
+
+| Line | Stock (`enum dma_ch` number) | `rk3036.dtsi` | `rk3128.dtsi` |
+|---|---|---|---|
+| 0 / 1 | I2S 8-ch TX/RX (4/5) | `i2s` | `i2s_2ch` |
+| 2 / 3 | UART0 TX/RX (0/1) | — | `uart0` |
+| 4 / 5 | UART1 TX/RX (2/3) | — | `uart1` |
+| 6 / 7 | UART2 TX/RX (16/17) | — | `uart2` |
+| 8 / 9 | SPI0 TX/RX (20/21) | `spi` | `spi0` |
+| 10 | SDMMC (12) | — | `sdmmc` |
+| 11 | SDIO (13) | — | `sdio` |
+| 12 | **eMMC (14 = `DMACH_EMMC`)** | `emmc` | `emmc` |
+| 13 | reserved for memory-to-memory (25) | — | `spdif` |
+| 14 / 15 | unused | — | `i2s_8ch` |
+
+- Mainline describes the same controller in both files: `dma-controller@20078000`, `arm,pl330`, `GIC_SPI 0/1`,
+  **`arm,pl330-periph-burst`** and **`arm,pl330-broken-no-flushp`**, which is exactly what the stock microcode does (burst
+  only, no `FLUSHP`). Differences: line 13 is SPDIF on the RK3128 and memory-to-memory in stock; the RK3128 puts its 8-channel
+  I2S on 14/15, beyond the 14 lines the RC2 controller reports; mainline needs the clock (`ACLK_DMAC2` in `rk3036.dtsi`,
+  `ACLK_DMAC` in `rk3128.dtsi`), which stock never touches. A `rk3026.dtsi` can copy the `rk3036.dtsi` node and use lines
+  10–12 for SDMMC/SDIO/eMMC [STRONG].
+- **The API channel number is not the request line.** `rk29_dma_request()` takes an `enum dma_ch` value: eMMC is channel
+  14 on request line 12; `rk29_sdmmc` picks channels 12/13/14 by `pdev->id` [CONFIRMED-dis].
+
+`rk29_dma_*` quirks that matter for a module built against the stock kernel (all also in the public source):
+- Addresses passed to `rk29_dma_enqueue()` are physical; the API does no mapping and no cache maintenance. Callers do
+  the cache work with `___dma_single_cpu_to_dev`/`___dma_single_dev_to_cpu`, which handle L1 and the PL310 L2 themselves
+  (`BUG()` for a buffer outside lowmem) [CONFIRMED-dis].
+- `rk29_dma_enqueue()` returns 0 even when the submit to the PL330 fails (the error arrives in the callback);
+  `rk29_dma_config()` silently ignores out-of-range values and returns 0, and loops forever when the transfer unit is not
+  a power of two; `rk29_dma_setflags()` always returns 0 [CONFIRMED-dis].
+- `RK29_DMAOP_STOP` aborts the current request and immediately starts the next queued one; `FLUSH` cancels everything;
+  `PAUSE`/`RESUME` are no-ops [CONFIRMED-src].
+- Completion callbacks run in hard-IRQ context; the next transfer is submitted from the IRQ [CONFIRMED-dis].
+- For `DMACH_EMMC` the driver forces a burst length of 16 [CONFIRMED-dis].
+- Coherent DMA pool (`CONSISTENT_DMA_SIZE`) is 8 MiB; there is no dmabounce or swiotlb [CONFIRMED-dis].
+
+The **NAND controller** at 0x10500000 is NandC v6 (mainline `rockchip,rk3036-nfc` with the `rockchip,rk2928-nfc`
+fallback, `rockchip-nand-controller.c` `NFC_V6`) [STRONG]. It has its own bus-master DMA (buffer addresses in its
+`DMA_DATA_BUF`/`DMA_OOB_BUF` registers) and does not use the PL330. The vendor module contains that path, but it is not
+executed on the RC2, which has eMMC and no raw NAND.
 
 ## 2. Interrupts
 
@@ -455,3 +520,5 @@ the stock FIQ debugger on UART2 is therefore of little use.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; QoS offsets in the CPU AXI window.
 - CLKSEL23 write behaviour (one test write); EBC clock gating between updates.
 - PL310 attributes for mainline (stock `AUX_CTRL` 0x76030001).
+- Whether the eMMC controller has the dw_mmc internal DMA (IDMAC, `BMOD`/`DBADDR`): stock uses the external PL330 through
+  the controller's DMA interface (§1.1); a register dump or a test would tell.
