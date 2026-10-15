@@ -1,0 +1,23 @@
+check	result	reason
+fbo-rgba8-texture	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgb8-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgb565-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba4-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgb5a1-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+depth16	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+depth24	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+depth16+stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+depth24stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+fbo-rgba8tex+depth-texture16	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+pot-64x64-mipmap (control)	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; glGenerateMipmap GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (POT)
+npot-100x60-clamp-nomip	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+npot-100x60-repeat-nomip	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+npot-100x60-clamp-mipmap	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; glGenerateMipmap GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+fragment-highp-compiles	PASS	compile ok; fragment HIGH_FLOAT range 0..0 precision 0; log: (empty)
+fragment-highp-macro	FAIL	GL_FRAGMENT_PRECISION_HIGH not defined; log: 0:2: P0002: #error: no GL_FRAGMENT_PRECISION_HIGH
+oes-egl-image-external-sampler	PASS	compile+link ok; GL_OES_EGL_image_external advertised; log: (empty)
+readpixels-rgba-ubyte	PASS	err GL_NO_ERROR; got 4080c0ff want 4080c0ff (+-2); surface R8G8B8
+readpixels-implementation-format	PASS	format 0x1907 GL_RGB, type 0x8363 GL_UNSIGNED_SHORT_5_6_5; err GL_NO_ERROR; first pixel 1844
+max-texture-rgba8-alloc	FAIL	4096x4096 RGBA8 (64 MiB): teximage GL_NO_ERROR; fbo COMPLETE; clear+read GL_NO_ERROR; corner pixel 00000000

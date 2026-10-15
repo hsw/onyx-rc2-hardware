@@ -1,0 +1,823 @@
+## probe
+probe	egl_probe 2 (tools/egl-probe)
+
+## chromium-q3
+egl_version: 1.4
+egl_vendor: Android
+egl_version_string: 1.4 Android META-EGL
+egl_client_apis: OpenGL_ES
+egl_extensions:
+  EGL_KHR_get_all_proc_addresses
+  EGL_ANDROID_presentation_time
+  EGL_KHR_image
+  EGL_KHR_image_base
+  EGL_KHR_image_pixmap
+  EGL_KHR_gl_texture_2D_image
+  EGL_KHR_gl_texture_cubemap_image
+  EGL_KHR_gl_renderbuffer_image
+  EGL_KHR_reusable_sync
+  EGL_KHR_fence_sync
+  EGL_ANDROID_image_native_buffer
+  EGL_ANDROID_recordable
+es3_config: FAIL n=0 err=0x3004
+es2_pbuffer_config: ok
+es2_context: ok
+shared_context: ok
+gl_vendor: ARM
+gl_renderer: Mali-400 MP
+gl_version: OpenGL ES 2.0
+gl_shading_language: OpenGL ES GLSL ES 1.00
+gl_extensions:
+  GL_EXT_debug_marker
+  GL_OES_texture_npot
+  GL_OES_compressed_ETC1_RGB8_texture
+  GL_OES_standard_derivatives
+  GL_OES_EGL_image
+  GL_OES_depth24
+  GL_ARM_rgba8
+  GL_ARM_mali_shader_binary
+  GL_OES_depth_texture
+  GL_OES_packed_depth_stencil
+  GL_EXT_texture_format_BGRA8888
+  GL_EXT_blend_minmax
+  GL_OES_EGL_image_external
+  GL_OES_EGL_sync
+  GL_OES_rgb8_rgba8
+  GL_EXT_multisampled_render_to_texture
+  GL_EXT_discard_framebuffer
+  GL_OES_get_program_binary
+  GL_ARM_mali_program_binary
+  GL_EXT_shader_texture_lod
+  GL_EXT_robustness
+max_texture_size: 4096
+max_renderbuffer_size: 4096
+max_texture_image_units: 8
+threaded_texture_mailbox_exts: yes
+fence_sync: ok wait=0x30f6
+egl_image_from_texture: ok err=0x0
+egl_image_target_texture: ok gl_err=0x0
+
+## egl-strings
+layer	app (libEGL.so, Android META-EGL)
+eglInitialize	1.4
+EGL_VENDOR	Android
+EGL_VERSION	1.4 Android META-EGL
+EGL_CLIENT_APIS	OpenGL_ES
+
+## egl-extensions
+EGL_ANDROID_image_native_buffer
+EGL_ANDROID_presentation_time
+EGL_ANDROID_recordable
+EGL_KHR_fence_sync
+EGL_KHR_get_all_proc_addresses
+EGL_KHR_gl_renderbuffer_image
+EGL_KHR_gl_texture_2D_image
+EGL_KHR_gl_texture_cubemap_image
+EGL_KHR_image
+EGL_KHR_image_base
+EGL_KHR_image_pixmap
+EGL_KHR_reusable_sync
+count	12
+
+## egl-configs
+id	buffer	r	g	b	a	lum	amask	depth	stencil	sample_buffers	samples	color_type	caveat	surface	renderable	conformant	native_renderable	native_visual_id	native_visual_type	level	bind_rgb	bind_rgba	min_swap	max_swap	max_pb_w	max_pb_h	max_pb_pixels	transparent	trans_r	trans_g	trans_b	recordable_android	fb_target_android
+5	16	5	6	5	0	0	0	24	8	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	4	0x0	0	1	0	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+3	16	5	6	5	0	0	0	24	8	1	4	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|MULTISAMPLE_RESOLVE_BOX|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	4	0x0	0	1	0	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+4	16	5	6	5	0	0	0	24	8	1	16	RGB_BUFFER	NONCONFORMANT	PBUFFER|PIXMAP|WINDOW|MULTISAMPLE_RESOLVE_BOX|SWAP_BEHAVIOR_PRESERVED	ES|ES2	0	1	4	0x0	0	1	0	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+19	16	5	5	5	1	0	0	24	8	0	0	RGB_BUFFER	NONE	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	6	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+18	16	5	5	5	1	0	0	24	8	1	4	RGB_BUFFER	NONE	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	6	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+20	16	5	5	5	1	0	0	24	8	1	16	RGB_BUFFER	NONCONFORMANT	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	0	1	6	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+21	16	4	4	4	4	0	0	24	8	0	0	RGB_BUFFER	NONE	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	7	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+22	16	4	4	4	4	0	0	24	8	1	4	RGB_BUFFER	NONE	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	7	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+23	16	4	4	4	4	0	0	24	8	1	16	RGB_BUFFER	NONCONFORMANT	PBUFFER|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	0	1	7	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+9	32	8	8	8	8	0	0	24	8	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	1	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+38	32	8	8	8	0	0	0	24	8	0	0	RGB_BUFFER	NONCONFORMANT	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	2	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+12	32	8	8	8	8	0	0	24	8	1	4	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|MULTISAMPLE_RESOLVE_BOX|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	1	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+15	32	8	8	8	8	0	0	24	8	1	16	RGB_BUFFER	NONCONFORMANT	PBUFFER|PIXMAP|WINDOW|MULTISAMPLE_RESOLVE_BOX|SWAP_BEHAVIOR_PRESERVED	ES|ES2	0	1	1	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+13	8	0	0	0	0	8	0	0	0	0	0	LUMINANCE_BUFFER	NONCONFORMANT	PIXMAP	0	0	1	0	0x0	0	0	0	0	0	0	0	0	NONE	-1	-1	-1	0	0
+14	16	0	0	0	8	8	0	0	0	0	0	LUMINANCE_BUFFER	NONCONFORMANT	PIXMAP	0	0	1	0	0x0	0	0	0	0	0	0	0	0	NONE	-1	-1	-1	0	0
+29	16	5	6	5	0	0	0	0	0	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	4	0x0	0	1	0	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+30	32	8	8	8	8	0	0	0	0	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	1	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+31	32	8	8	8	0	0	0	0	0	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	2	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+32	32	8	8	8	0	0	0	24	0	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	2	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	0	0
+33	32	8	8	8	8	0	0	24	8	0	0	RGB_BUFFER	NONE	PBUFFER|PIXMAP|WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	5	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	1
+40	32	8	8	8	8	0	0	24	8	0	0	RGB_BUFFER	SLOW	WINDOW|SWAP_BEHAVIOR_PRESERVED	ES|ES2	ES|ES2	1	1	0x0	0	1	1	0	10	4096	4096	16777216	NONE	-1	-1	-1	1	0
+count	21
+
+## egl-procs
+EGL_ANDROID_image_native_buffer	(no entry points in the probe's table)
+EGL_ANDROID_recordable	(no entry points in the probe's table)
+EGL_KHR_get_all_proc_addresses	(no entry points in the probe's table)
+EGL_KHR_gl_renderbuffer_image	(no entry points in the probe's table)
+EGL_KHR_gl_texture_2D_image	(no entry points in the probe's table)
+EGL_KHR_gl_texture_cubemap_image	(no entry points in the probe's table)
+EGL_KHR_image_pixmap	(no entry points in the probe's table)
+EGL_ANDROID_presentation_time	eglPresentationTimeANDROID	app=non-NULL	libEGL-wrapper
+EGL_KHR_fence_sync	eglClientWaitSyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_fence_sync	eglCreateSyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_fence_sync	eglDestroySyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_fence_sync	eglGetSyncAttribKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_image	eglCreateImageKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_image	eglDestroyImageKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_image_base	eglCreateImageKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_image_base	eglDestroyImageKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_reusable_sync	eglClientWaitSyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_reusable_sync	eglCreateSyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_reusable_sync	eglDestroySyncKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_reusable_sync	eglGetSyncAttribKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_reusable_sync	eglSignalSyncKHR	app=non-NULL	libEGL-wrapper
+
+## egl-procs-unadvertised
+EGL_ANDROID_blob_cache	eglSetBlobCacheFuncsANDROID	app=NULL	libEGL-filtered
+EGL_ANDROID_get_native_client_buffer	eglGetNativeClientBufferANDROID	app=NULL
+EGL_ANDROID_get_render_buffer	eglGetRenderBufferANDROID	app=non-NULL	libEGL-wrapper
+EGL_ANDROID_get_render_buffer	eglRenderBufferModifiedANDROID	app=non-NULL	libEGL-wrapper
+EGL_ANDROID_get_render_buffer	eglSetImplementationAndroid	app=non-NULL	libEGL-wrapper
+EGL_ANDROID_native_fence_sync	eglDupNativeFenceFDANDROID	app=NULL	libEGL-filtered
+EGL_ANDROID_set_implementation	eglSetImplementationAndroid	app=non-NULL	libEGL-wrapper
+EGL_ANDROID_swap_rectangle	eglSetSwapRectangleANDROID	app=NULL
+EGL_ANGLE_query_surface_pointer	eglQuerySurfacePointerANGLE	app=NULL
+EGL_EXT_platform_base	eglCreatePlatformPixmapSurfaceEXT	app=NULL
+EGL_EXT_platform_base	eglCreatePlatformWindowSurfaceEXT	app=NULL
+EGL_EXT_platform_base	eglGetPlatformDisplayEXT	app=NULL
+EGL_EXT_swap_buffers_with_damage	eglSwapBuffersWithDamageEXT	app=NULL
+EGL_HI_clientpixmap	eglCreatePixmapSurfaceHI	app=NULL
+EGL_IMG_hibernate_process	eglAwakenProcessIMG	app=NULL	libEGL-filtered
+EGL_IMG_hibernate_process	eglHibernateProcessIMG	app=NULL	libEGL-filtered
+EGL_KHR_debug	eglDebugMessageControlKHR	app=NULL
+EGL_KHR_debug	eglLabelObjectKHR	app=NULL
+EGL_KHR_debug	eglQueryDebugKHR	app=NULL
+EGL_KHR_lock_surface	eglLockSurfaceKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_lock_surface	eglUnlockSurfaceKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_lock_surface2	eglLockSurfaceKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_lock_surface2	eglUnlockSurfaceKHR	app=non-NULL	libEGL-wrapper
+EGL_KHR_partial_update	eglSetDamageRegionKHR	app=NULL
+EGL_KHR_stream	eglCreateStreamKHR	app=NULL
+EGL_KHR_stream	eglDestroyStreamKHR	app=NULL
+EGL_KHR_stream	eglQueryStreamKHR	app=NULL
+EGL_KHR_stream	eglQueryStreamu64KHR	app=NULL
+EGL_KHR_stream	eglStreamAttribKHR	app=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerAcquireKHR	app=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerGLTextureExternalKHR	app=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerReleaseKHR	app=NULL
+EGL_KHR_stream_cross_process_fd	eglCreateStreamFromFileDescriptorKHR	app=NULL
+EGL_KHR_stream_cross_process_fd	eglGetStreamFileDescriptorKHR	app=NULL
+EGL_KHR_stream_fifo	eglQueryStreamTimeKHR	app=NULL
+EGL_KHR_stream_producer_eglsurface	eglCreateStreamProducerSurfaceKHR	app=NULL
+EGL_KHR_swap_buffers_with_damage	eglSwapBuffersWithDamageKHR	app=NULL
+EGL_KHR_wait_sync	eglWaitSyncKHR	app=non-NULL	libEGL-wrapper
+EGL_MESA_drm_image	eglCreateDRMImageMESA	app=NULL
+EGL_MESA_drm_image	eglExportDRMImageMESA	app=NULL
+EGL_NV_native_query	eglQueryNativeDisplayNV	app=NULL
+EGL_NV_native_query	eglQueryNativePixmapNV	app=NULL
+EGL_NV_native_query	eglQueryNativeWindowNV	app=NULL
+EGL_NV_post_sub_buffer	eglPostSubBufferNV	app=NULL
+EGL_NV_sync	eglClientWaitSyncNV	app=NULL
+EGL_NV_sync	eglCreateFenceSyncNV	app=NULL
+EGL_NV_sync	eglDestroySyncNV	app=NULL
+EGL_NV_sync	eglFenceNV	app=NULL
+EGL_NV_sync	eglGetSyncAttribNV	app=NULL
+EGL_NV_sync	eglSignalSyncNV	app=NULL
+EGL_NV_system_time	eglGetSystemTimeFrequencyNV	app=non-NULL	libEGL-wrapper
+EGL_NV_system_time	eglGetSystemTimeNV	app=non-NULL	libEGL-wrapper
+control	eglRc2ProbeNoSuchFunction	app=NULL
+
+## egl-vendor-strings
+vendor_lib	/system/lib/egl/libEGL_mali.so
+eglInitialize	1.4
+EGL_VENDOR	ARM
+EGL_VERSION	1.4 Linux-r3p2-01rel0
+EGL_CLIENT_APIS	OpenGL_ES
+
+## egl-vendor-extensions
+EGL_ANDROID_framebuffer_target
+EGL_ANDROID_image_native_buffer
+EGL_ANDROID_recordable
+EGL_KHR_fence_sync
+EGL_KHR_gl_renderbuffer_image
+EGL_KHR_gl_texture_2D_image
+EGL_KHR_gl_texture_cubemap_image
+EGL_KHR_image
+EGL_KHR_image_base
+EGL_KHR_image_pixmap
+EGL_KHR_reusable_sync
+count	11
+
+## egl-vendor-procs
+EGL_ANDROID_framebuffer_target	(no entry points in the probe's table)
+EGL_ANDROID_image_native_buffer	(no entry points in the probe's table)
+EGL_ANDROID_recordable	(no entry points in the probe's table)
+EGL_KHR_gl_renderbuffer_image	(no entry points in the probe's table)
+EGL_KHR_gl_texture_2D_image	(no entry points in the probe's table)
+EGL_KHR_gl_texture_cubemap_image	(no entry points in the probe's table)
+EGL_KHR_image_pixmap	(no entry points in the probe's table)
+EGL_KHR_fence_sync	eglClientWaitSyncKHR	vendor=non-NULL
+EGL_KHR_fence_sync	eglCreateSyncKHR	vendor=non-NULL
+EGL_KHR_fence_sync	eglDestroySyncKHR	vendor=non-NULL
+EGL_KHR_fence_sync	eglGetSyncAttribKHR	vendor=non-NULL
+EGL_KHR_image	eglCreateImageKHR	vendor=non-NULL
+EGL_KHR_image	eglDestroyImageKHR	vendor=non-NULL
+EGL_KHR_image_base	eglCreateImageKHR	vendor=non-NULL
+EGL_KHR_image_base	eglDestroyImageKHR	vendor=non-NULL
+EGL_KHR_reusable_sync	eglClientWaitSyncKHR	vendor=non-NULL
+EGL_KHR_reusable_sync	eglCreateSyncKHR	vendor=non-NULL
+EGL_KHR_reusable_sync	eglDestroySyncKHR	vendor=non-NULL
+EGL_KHR_reusable_sync	eglGetSyncAttribKHR	vendor=non-NULL
+EGL_KHR_reusable_sync	eglSignalSyncKHR	vendor=non-NULL
+
+## egl-vendor-procs-unadvertised
+EGL_ANDROID_blob_cache	eglSetBlobCacheFuncsANDROID	vendor=NULL
+EGL_ANDROID_get_native_client_buffer	eglGetNativeClientBufferANDROID	vendor=NULL
+EGL_ANDROID_get_render_buffer	eglGetRenderBufferANDROID	vendor=NULL
+EGL_ANDROID_get_render_buffer	eglRenderBufferModifiedANDROID	vendor=NULL
+EGL_ANDROID_get_render_buffer	eglSetImplementationAndroid	vendor=NULL
+EGL_ANDROID_native_fence_sync	eglDupNativeFenceFDANDROID	vendor=NULL
+EGL_ANDROID_presentation_time	eglPresentationTimeANDROID	vendor=NULL
+EGL_ANDROID_set_implementation	eglSetImplementationAndroid	vendor=NULL
+EGL_ANDROID_swap_rectangle	eglSetSwapRectangleANDROID	vendor=NULL
+EGL_ANGLE_query_surface_pointer	eglQuerySurfacePointerANGLE	vendor=NULL
+EGL_EXT_platform_base	eglCreatePlatformPixmapSurfaceEXT	vendor=NULL
+EGL_EXT_platform_base	eglCreatePlatformWindowSurfaceEXT	vendor=NULL
+EGL_EXT_platform_base	eglGetPlatformDisplayEXT	vendor=NULL
+EGL_EXT_swap_buffers_with_damage	eglSwapBuffersWithDamageEXT	vendor=NULL
+EGL_HI_clientpixmap	eglCreatePixmapSurfaceHI	vendor=NULL
+EGL_IMG_hibernate_process	eglAwakenProcessIMG	vendor=NULL
+EGL_IMG_hibernate_process	eglHibernateProcessIMG	vendor=NULL
+EGL_KHR_debug	eglDebugMessageControlKHR	vendor=NULL
+EGL_KHR_debug	eglLabelObjectKHR	vendor=NULL
+EGL_KHR_debug	eglQueryDebugKHR	vendor=NULL
+EGL_KHR_lock_surface	eglLockSurfaceKHR	vendor=NULL
+EGL_KHR_lock_surface	eglUnlockSurfaceKHR	vendor=NULL
+EGL_KHR_lock_surface2	eglLockSurfaceKHR	vendor=NULL
+EGL_KHR_lock_surface2	eglUnlockSurfaceKHR	vendor=NULL
+EGL_KHR_partial_update	eglSetDamageRegionKHR	vendor=NULL
+EGL_KHR_stream	eglCreateStreamKHR	vendor=NULL
+EGL_KHR_stream	eglDestroyStreamKHR	vendor=NULL
+EGL_KHR_stream	eglQueryStreamKHR	vendor=NULL
+EGL_KHR_stream	eglQueryStreamu64KHR	vendor=NULL
+EGL_KHR_stream	eglStreamAttribKHR	vendor=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerAcquireKHR	vendor=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerGLTextureExternalKHR	vendor=NULL
+EGL_KHR_stream_consumer_gltexture	eglStreamConsumerReleaseKHR	vendor=NULL
+EGL_KHR_stream_cross_process_fd	eglCreateStreamFromFileDescriptorKHR	vendor=NULL
+EGL_KHR_stream_cross_process_fd	eglGetStreamFileDescriptorKHR	vendor=NULL
+EGL_KHR_stream_fifo	eglQueryStreamTimeKHR	vendor=NULL
+EGL_KHR_stream_producer_eglsurface	eglCreateStreamProducerSurfaceKHR	vendor=NULL
+EGL_KHR_swap_buffers_with_damage	eglSwapBuffersWithDamageKHR	vendor=NULL
+EGL_KHR_wait_sync	eglWaitSyncKHR	vendor=NULL
+EGL_MESA_drm_image	eglCreateDRMImageMESA	vendor=NULL
+EGL_MESA_drm_image	eglExportDRMImageMESA	vendor=NULL
+EGL_NV_native_query	eglQueryNativeDisplayNV	vendor=NULL
+EGL_NV_native_query	eglQueryNativePixmapNV	vendor=NULL
+EGL_NV_native_query	eglQueryNativeWindowNV	vendor=NULL
+EGL_NV_post_sub_buffer	eglPostSubBufferNV	vendor=NULL
+EGL_NV_sync	eglClientWaitSyncNV	vendor=NULL
+EGL_NV_sync	eglCreateFenceSyncNV	vendor=NULL
+EGL_NV_sync	eglDestroySyncNV	vendor=NULL
+EGL_NV_sync	eglFenceNV	vendor=NULL
+EGL_NV_sync	eglGetSyncAttribNV	vendor=NULL
+EGL_NV_sync	eglSignalSyncNV	vendor=NULL
+EGL_NV_system_time	eglGetSystemTimeFrequencyNV	vendor=NULL
+EGL_NV_system_time	eglGetSystemTimeNV	vendor=NULL
+
+## gles1-strings
+context	ES1 pbuffer 64x64 config_id 30
+GL_VENDOR	ARM
+GL_RENDERER	Mali-400 MP
+GL_VERSION	OpenGL ES-CM 1.1
+GL_SHADING_LANGUAGE_VERSION	n/a (ES 1.1)
+
+## gles1-extensions
+GL_ARM_rgba8
+GL_EXT_debug_marker
+GL_EXT_discard_framebuffer
+GL_EXT_multisampled_render_to_texture
+GL_EXT_robustness
+GL_EXT_texture_format_BGRA8888
+GL_OES_EGL_image
+GL_OES_EGL_image_external
+GL_OES_EGL_sync
+GL_OES_byte_coordinates
+GL_OES_compressed_ETC1_RGB8_texture
+GL_OES_compressed_paletted_texture
+GL_OES_depth24
+GL_OES_depth_texture
+GL_OES_draw_texture
+GL_OES_extended_matrix_palette
+GL_OES_fixed_point
+GL_OES_framebuffer_object
+GL_OES_matrix_get
+GL_OES_matrix_palette
+GL_OES_packed_depth_stencil
+GL_OES_point_size_array
+GL_OES_point_sprite
+GL_OES_query_matrix
+GL_OES_read_format
+GL_OES_rgb8_rgba8
+GL_OES_single_precision
+GL_OES_stencil8
+GL_OES_texture_cube_map
+GL_OES_texture_npot
+count	30
+
+## gles1-limits
+GL_MAX_LIGHTS	8
+GL_MAX_CLIP_PLANES	1
+GL_MAX_TEXTURE_SIZE	4096
+GL_MAX_MODELVIEW_STACK_DEPTH	32
+GL_MAX_PROJECTION_STACK_DEPTH	32
+GL_MAX_TEXTURE_STACK_DEPTH	32
+GL_MAX_VIEWPORT_DIMS	4096 4096
+GL_MAX_TEXTURE_UNITS	8
+GL_ALIASED_POINT_SIZE_RANGE	1 100
+GL_ALIASED_LINE_WIDTH_RANGE	1 100
+GL_SMOOTH_POINT_SIZE_RANGE	1 100
+GL_SMOOTH_LINE_WIDTH_RANGE	0.25 100
+GL_SUBPIXEL_BITS	4
+GL_RED_BITS	8
+GL_GREEN_BITS	8
+GL_BLUE_BITS	8
+GL_ALPHA_BITS	8
+GL_DEPTH_BITS	0
+GL_STENCIL_BITS	0
+GL_SAMPLE_BUFFERS	0
+GL_SAMPLES	0
+GL_NUM_COMPRESSED_TEXTURE_FORMATS	11
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[0]	0x8b90 GL_PALETTE4_RGB8_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[1]	0x8b91 GL_PALETTE4_RGBA8_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[2]	0x8b92 GL_PALETTE4_R5_G6_B5_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[3]	0x8b93 GL_PALETTE4_RGBA4_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[4]	0x8b94 GL_PALETTE4_RGB5_A1_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[5]	0x8b95 GL_PALETTE8_RGB8_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[6]	0x8b96 GL_PALETTE8_RGBA8_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[7]	0x8b97 GL_PALETTE8_R5_G6_B5_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[8]	0x8b98 GL_PALETTE8_RGBA4_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[9]	0x8b99 GL_PALETTE8_RGB5_A1_OES
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[10]	0x8d64 GL_ETC1_RGB8_OES
+GL_IMPLEMENTATION_COLOR_READ_FORMAT_OES	0x1907 GL_RGB
+GL_IMPLEMENTATION_COLOR_READ_TYPE_OES	0x8363 GL_UNSIGNED_SHORT_5_6_5
+GL_MAX_RENDERBUFFER_SIZE_OES	4096
+GL_MAX_PALETTE_MATRICES_OES	32
+GL_MAX_VERTEX_UNITS_OES	4
+GL_MAX_CUBE_MAP_TEXTURE_SIZE_OES	1024
+GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	n/a (no GL_EXT_texture_filter_anisotropic)
+GL_MAX_TEXTURE_LOD_BIAS_EXT	n/a (no GL_EXT_texture_lod_bias)
+GL_MAX_SAMPLES_IMG	n/a (no GL_IMG_multisampled_render_to_texture)
+GL_MAX_SAMPLES_EXT	4
+
+## gles1-procs
+GL_ARM_rgba8	(no entry points in the probe's table)
+GL_EXT_debug_marker	(no entry points in the probe's table)
+GL_EXT_texture_format_BGRA8888	(no entry points in the probe's table)
+GL_OES_EGL_image_external	(no entry points in the probe's table)
+GL_OES_EGL_sync	(no entry points in the probe's table)
+GL_OES_byte_coordinates	(no entry points in the probe's table)
+GL_OES_compressed_ETC1_RGB8_texture	(no entry points in the probe's table)
+GL_OES_compressed_paletted_texture	(no entry points in the probe's table)
+GL_OES_depth24	(no entry points in the probe's table)
+GL_OES_depth_texture	(no entry points in the probe's table)
+GL_OES_extended_matrix_palette	(no entry points in the probe's table)
+GL_OES_matrix_get	(no entry points in the probe's table)
+GL_OES_packed_depth_stencil	(no entry points in the probe's table)
+GL_OES_point_size_array	(no entry points in the probe's table)
+GL_OES_point_sprite	(no entry points in the probe's table)
+GL_OES_read_format	(no entry points in the probe's table)
+GL_OES_rgb8_rgba8	(no entry points in the probe's table)
+GL_OES_stencil8	(no entry points in the probe's table)
+GL_OES_texture_npot	(no entry points in the probe's table)
+GL_EXT_discard_framebuffer	glDiscardFramebufferEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_multisampled_render_to_texture	glFramebufferTexture2DMultisampleEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_multisampled_render_to_texture	glRenderbufferStorageMultisampleEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glGetGraphicsResetStatusEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glGetnUniformfvEXT	app=non-NULL	vendor=NULL
+GL_EXT_robustness	glGetnUniformivEXT	app=non-NULL	vendor=NULL
+GL_EXT_robustness	glReadnPixelsEXT	app=non-NULL	vendor=non-NULL
+GL_OES_EGL_image	glEGLImageTargetRenderbufferStorageOES	app=non-NULL	vendor=non-NULL
+GL_OES_EGL_image	glEGLImageTargetTexture2DOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexfOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexfvOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexiOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexivOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexsOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexsvOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexxOES	app=non-NULL	vendor=non-NULL
+GL_OES_draw_texture	glDrawTexxvOES	app=non-NULL	vendor=non-NULL
+GL_OES_fixed_point	glAlphaFuncxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glClearColorxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glClearDepthxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glClipPlanexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glColor4xOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glDepthRangexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glFogxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glFogxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glFrustumxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetClipPlanexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetFixedvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetLightxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetMaterialxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetTexEnvxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glGetTexParameterxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLightModelxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLightModelxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLightxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLightxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLineWidthxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glLoadMatrixxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glMaterialxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glMaterialxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glMultMatrixxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glMultiTexCoord4xOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glNormal3xOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glOrthoxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glPointParameterxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glPointParameterxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glPointSizexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glPolygonOffsetxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glRotatexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glSampleCoveragexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glScalexOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glTexEnvxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glTexEnvxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glTexParameterxOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glTexParameterxvOES	app=non-NULL	vendor=NULL
+GL_OES_fixed_point	glTranslatexOES	app=non-NULL	vendor=NULL
+GL_OES_framebuffer_object	glBindFramebufferOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glBindRenderbufferOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glCheckFramebufferStatusOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glDeleteFramebuffersOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glDeleteRenderbuffersOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glFramebufferRenderbufferOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glFramebufferTexture2DOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glGenFramebuffersOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glGenRenderbuffersOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glGenerateMipmapOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glGetFramebufferAttachmentParameterivOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glGetRenderbufferParameterivOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glIsFramebufferOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glIsRenderbufferOES	app=non-NULL	vendor=non-NULL
+GL_OES_framebuffer_object	glRenderbufferStorageOES	app=non-NULL	vendor=non-NULL
+GL_OES_matrix_palette	glCurrentPaletteMatrixOES	app=non-NULL	vendor=non-NULL
+GL_OES_matrix_palette	glLoadPaletteFromModelViewMatrixOES	app=non-NULL	vendor=non-NULL
+GL_OES_matrix_palette	glMatrixIndexPointerOES	app=non-NULL	vendor=non-NULL
+GL_OES_matrix_palette	glWeightPointerOES	app=non-NULL	vendor=non-NULL
+GL_OES_query_matrix	glQueryMatrixxOES	app=non-NULL	vendor=non-NULL
+GL_OES_single_precision	glClearDepthfOES	app=non-NULL	vendor=NULL
+GL_OES_single_precision	glClipPlanefOES	app=non-NULL	vendor=NULL
+GL_OES_single_precision	glDepthRangefOES	app=non-NULL	vendor=NULL
+GL_OES_single_precision	glFrustumfOES	app=non-NULL	vendor=NULL
+GL_OES_single_precision	glGetClipPlanefOES	app=non-NULL	vendor=NULL
+GL_OES_single_precision	glOrthofOES	app=non-NULL	vendor=NULL
+GL_OES_texture_cube_map	glGetTexGenfvOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glGetTexGenivOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glGetTexGenxvOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGenfOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGenfvOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGeniOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGenivOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGenxOES	app=non-NULL	vendor=non-NULL
+GL_OES_texture_cube_map	glTexGenxvOES	app=non-NULL	vendor=non-NULL
+
+## gles1-procs-unadvertised
+GL_APPLE_framebuffer_multisample	glRenderbufferStorageMultisampleAPPLE	app=non-NULL	vendor=NULL
+GL_APPLE_framebuffer_multisample	glResolveMultisampleFramebufferAPPLE	app=non-NULL	vendor=NULL
+GL_EXT_multi_draw_arrays	glMultiDrawArraysEXT	app=non-NULL	vendor=NULL
+GL_EXT_multi_draw_arrays	glMultiDrawElementsEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage1DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage2DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage3DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage1DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage2DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage3DEXT	app=non-NULL	vendor=NULL
+GL_IMG_multisampled_render_to_texture	glFramebufferTexture2DMultisampleIMG	app=non-NULL	vendor=NULL
+GL_IMG_multisampled_render_to_texture	glRenderbufferStorageMultisampleIMG	app=non-NULL	vendor=NULL
+GL_IMG_user_clip_plane	glClipPlanefIMG	app=non-NULL	vendor=NULL
+GL_IMG_user_clip_plane	glClipPlanexIMG	app=non-NULL	vendor=NULL
+GL_NV_fence	glDeleteFencesNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glFinishFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glGenFencesNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glGetFenceivNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glIsFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glSetFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glTestFenceNV	app=non-NULL	vendor=NULL
+GL_OES_blend_equation_separate	glBlendEquationSeparateOES	app=non-NULL	vendor=NULL
+GL_OES_blend_func_separate	glBlendFuncSeparateOES	app=non-NULL	vendor=NULL
+GL_OES_blend_subtract	glBlendEquationOES	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glGetBufferPointervOES	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glMapBufferOES	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glUnmapBufferOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glBindVertexArrayOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glDeleteVertexArraysOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glGenVertexArraysOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glIsVertexArrayOES	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glDisableDriverControlQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glEnableDriverControlQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glGetDriverControlStringQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glGetDriverControlsQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetBufferPointervQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetBuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetFramebuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetRenderbuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexLevelParameterivQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexSubImageQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexturesQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtTexObjectStateOverrideiQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetProgramBinarySourceQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetProgramsQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetShadersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtIsProgramBinaryQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_tiled_rendering	glEndTilingQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_tiled_rendering	glStartTilingQCOM	app=non-NULL	vendor=NULL
+control	glRc2ProbeNoSuchFunction	app=NULL	vendor=NULL
+app_gl_slots_used	140 of 256
+
+## gles2-strings
+context	ES2 pbuffer 64x64 config_id 30
+GL_VENDOR	ARM
+GL_RENDERER	Mali-400 MP
+GL_VERSION	OpenGL ES 2.0
+GL_SHADING_LANGUAGE_VERSION	OpenGL ES GLSL ES 1.00
+
+## gles2-extensions
+GL_ARM_mali_program_binary
+GL_ARM_mali_shader_binary
+GL_ARM_rgba8
+GL_EXT_blend_minmax
+GL_EXT_debug_marker
+GL_EXT_discard_framebuffer
+GL_EXT_multisampled_render_to_texture
+GL_EXT_robustness
+GL_EXT_shader_texture_lod
+GL_EXT_texture_format_BGRA8888
+GL_OES_EGL_image
+GL_OES_EGL_image_external
+GL_OES_EGL_sync
+GL_OES_compressed_ETC1_RGB8_texture
+GL_OES_depth24
+GL_OES_depth_texture
+GL_OES_get_program_binary
+GL_OES_packed_depth_stencil
+GL_OES_rgb8_rgba8
+GL_OES_standard_derivatives
+GL_OES_texture_npot
+count	21
+
+## gles2-limits
+GL_MAX_VERTEX_ATTRIBS	16
+GL_MAX_VERTEX_UNIFORM_VECTORS	256
+GL_MAX_VARYING_VECTORS	12
+GL_MAX_FRAGMENT_UNIFORM_VECTORS	256
+GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS	8
+GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS	0
+GL_MAX_TEXTURE_IMAGE_UNITS	8
+GL_MAX_TEXTURE_SIZE	4096
+GL_MAX_CUBE_MAP_TEXTURE_SIZE	1024
+GL_MAX_RENDERBUFFER_SIZE	4096
+GL_MAX_VIEWPORT_DIMS	4096 4096
+GL_ALIASED_POINT_SIZE_RANGE	1 100
+GL_ALIASED_LINE_WIDTH_RANGE	1 100
+GL_SUBPIXEL_BITS	4
+GL_RED_BITS	8
+GL_GREEN_BITS	8
+GL_BLUE_BITS	8
+GL_ALPHA_BITS	8
+GL_DEPTH_BITS	0
+GL_STENCIL_BITS	0
+GL_SAMPLE_BUFFERS	0
+GL_SAMPLES	0
+GL_SHADER_COMPILER	1
+GL_NUM_COMPRESSED_TEXTURE_FORMATS	1
+GL_NUM_COMPRESSED_TEXTURE_FORMATS[0]	0x8d64 GL_ETC1_RGB8_OES
+GL_NUM_SHADER_BINARY_FORMATS	1
+GL_NUM_SHADER_BINARY_FORMATS[0]	0x8f60 GL_MALI_SHADER_BINARY_ARM
+GL_NUM_PROGRAM_BINARY_FORMATS_OES	1
+GL_NUM_PROGRAM_BINARY_FORMATS_OES[0]	0x8f61 GL_MALI_PROGRAM_BINARY_ARM
+GL_IMPLEMENTATION_COLOR_READ_FORMAT	0x1907 GL_RGB
+GL_IMPLEMENTATION_COLOR_READ_TYPE	0x8363 GL_UNSIGNED_SHORT_5_6_5
+GL_MAX_3D_TEXTURE_SIZE_OES	n/a (no GL_OES_texture_3D)
+GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	n/a (no GL_EXT_texture_filter_anisotropic)
+GL_MAX_SAMPLES_EXT	4
+GL_MAX_SAMPLES_IMG	n/a (no GL_IMG_multisampled_render_to_texture)
+GL_MAX_SAMPLES_ANGLE	n/a (no GL_ANGLE_framebuffer_multisample)
+GL_MAX_SAMPLES_APPLE	n/a (no GL_APPLE_framebuffer_multisample)
+GL_MAX_DRAW_BUFFERS_EXT	n/a (no GL_EXT_draw_buffers)
+GL_MAX_COLOR_ATTACHMENTS_EXT	n/a (no GL_EXT_draw_buffers)
+GL_MAX_DEBUG_MESSAGE_LENGTH_KHR	n/a (no GL_KHR_debug)
+
+## gles2-precision
+shader	type	range_min	range_max	precision
+vertex	LOW_FLOAT	127	127	23
+vertex	MEDIUM_FLOAT	127	127	23
+vertex	HIGH_FLOAT	127	127	23
+vertex	LOW_INT	24	24	0
+vertex	MEDIUM_INT	24	24	0
+vertex	HIGH_INT	24	24	0
+fragment	LOW_FLOAT	15	15	10
+fragment	MEDIUM_FLOAT	15	15	10
+fragment	HIGH_FLOAT	0	0	0
+fragment	LOW_INT	11	11	0
+fragment	MEDIUM_INT	11	11	0
+fragment	HIGH_INT	0	0	0
+
+## gles2-procs
+GL_ARM_mali_program_binary	(no entry points in the probe's table)
+GL_ARM_mali_shader_binary	(no entry points in the probe's table)
+GL_ARM_rgba8	(no entry points in the probe's table)
+GL_EXT_blend_minmax	(no entry points in the probe's table)
+GL_EXT_shader_texture_lod	(no entry points in the probe's table)
+GL_EXT_texture_format_BGRA8888	(no entry points in the probe's table)
+GL_OES_EGL_image_external	(no entry points in the probe's table)
+GL_OES_EGL_sync	(no entry points in the probe's table)
+GL_OES_compressed_ETC1_RGB8_texture	(no entry points in the probe's table)
+GL_OES_depth24	(no entry points in the probe's table)
+GL_OES_depth_texture	(no entry points in the probe's table)
+GL_OES_packed_depth_stencil	(no entry points in the probe's table)
+GL_OES_rgb8_rgba8	(no entry points in the probe's table)
+GL_OES_standard_derivatives	(no entry points in the probe's table)
+GL_OES_texture_npot	(no entry points in the probe's table)
+GL_EXT_debug_marker	glInsertEventMarkerEXT	app=non-NULL	vendor=NULL
+GL_EXT_debug_marker	glPopGroupMarkerEXT	app=non-NULL	vendor=NULL
+GL_EXT_debug_marker	glPushGroupMarkerEXT	app=non-NULL	vendor=NULL
+GL_EXT_discard_framebuffer	glDiscardFramebufferEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_multisampled_render_to_texture	glFramebufferTexture2DMultisampleEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_multisampled_render_to_texture	glRenderbufferStorageMultisampleEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glGetGraphicsResetStatusEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glGetnUniformfvEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glGetnUniformivEXT	app=non-NULL	vendor=non-NULL
+GL_EXT_robustness	glReadnPixelsEXT	app=non-NULL	vendor=non-NULL
+GL_OES_EGL_image	glEGLImageTargetRenderbufferStorageOES	app=non-NULL	vendor=non-NULL
+GL_OES_EGL_image	glEGLImageTargetTexture2DOES	app=non-NULL	vendor=non-NULL
+GL_OES_get_program_binary	glGetProgramBinaryOES	app=non-NULL	vendor=non-NULL
+GL_OES_get_program_binary	glProgramBinaryOES	app=non-NULL	vendor=non-NULL
+
+## gles2-procs-unadvertised
+GL_AMD_performance_monitor	glBeginPerfMonitorAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glDeletePerfMonitorsAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glEndPerfMonitorAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGenPerfMonitorsAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorCounterDataAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorCounterInfoAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorCounterStringAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorCountersAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorGroupStringAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glGetPerfMonitorGroupsAMD	app=non-NULL	vendor=NULL
+GL_AMD_performance_monitor	glSelectPerfMonitorCountersAMD	app=non-NULL	vendor=NULL
+GL_ANGLE_framebuffer_blit	glBlitFramebufferANGLE	app=non-NULL	vendor=NULL
+GL_ANGLE_framebuffer_multisample	glRenderbufferStorageMultisampleANGLE	app=non-NULL	vendor=NULL
+GL_ANGLE_instanced_arrays	glDrawArraysInstancedANGLE	app=NULL	vendor=NULL
+GL_ANGLE_instanced_arrays	glDrawElementsInstancedANGLE	app=NULL	vendor=NULL
+GL_ANGLE_instanced_arrays	glVertexAttribDivisorANGLE	app=NULL	vendor=NULL
+GL_APPLE_framebuffer_multisample	glRenderbufferStorageMultisampleAPPLE	app=non-NULL	vendor=NULL
+GL_APPLE_framebuffer_multisample	glResolveMultisampleFramebufferAPPLE	app=non-NULL	vendor=NULL
+GL_EXT_debug_label	glGetObjectLabelEXT	app=non-NULL	vendor=NULL
+GL_EXT_debug_label	glLabelObjectEXT	app=non-NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glBeginQueryEXT	app=non-NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glDeleteQueriesEXT	app=non-NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glEndQueryEXT	app=non-NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glGenQueriesEXT	app=non-NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glGetQueryObjectui64vEXT	app=NULL	vendor=NULL
+GL_EXT_disjoint_timer_query	glQueryCounterEXT	app=NULL	vendor=NULL
+GL_EXT_draw_buffers	glDrawBuffersEXT	app=NULL	vendor=NULL
+GL_EXT_instanced_arrays	glDrawArraysInstancedEXT	app=NULL	vendor=NULL
+GL_EXT_instanced_arrays	glDrawElementsInstancedEXT	app=NULL	vendor=NULL
+GL_EXT_instanced_arrays	glVertexAttribDivisorEXT	app=NULL	vendor=NULL
+GL_EXT_multi_draw_arrays	glMultiDrawArraysEXT	app=non-NULL	vendor=NULL
+GL_EXT_multi_draw_arrays	glMultiDrawElementsEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glBeginQueryEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glDeleteQueriesEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glEndQueryEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glGenQueriesEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glGetQueryObjectuivEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glGetQueryivEXT	app=non-NULL	vendor=NULL
+GL_EXT_occlusion_query_boolean	glIsQueryEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glActiveShaderProgramEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glBindProgramPipelineEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glCreateShaderProgramvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glDeleteProgramPipelinesEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glGenProgramPipelinesEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glGetProgramPipelineInfoLogEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glGetProgramPipelineivEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glIsProgramPipelineEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramParameteriEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform1fEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform1fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform1iEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform1ivEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform2fEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform2fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform2iEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform2ivEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform3fEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform3fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform3iEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform3ivEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform4fEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform4fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform4iEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniform4ivEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniformMatrix2fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniformMatrix3fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glProgramUniformMatrix4fvEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glUseProgramStagesEXT	app=non-NULL	vendor=NULL
+GL_EXT_separate_shader_objects	glValidateProgramPipelineEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage1DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage2DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTexStorage3DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage1DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage2DEXT	app=non-NULL	vendor=NULL
+GL_EXT_texture_storage	glTextureStorage3DEXT	app=non-NULL	vendor=NULL
+GL_IMG_multisampled_render_to_texture	glFramebufferTexture2DMultisampleIMG	app=non-NULL	vendor=NULL
+GL_IMG_multisampled_render_to_texture	glRenderbufferStorageMultisampleIMG	app=non-NULL	vendor=NULL
+GL_KHR_debug	glDebugMessageCallbackKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glDebugMessageControlKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glDebugMessageInsertKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glGetDebugMessageLogKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glGetObjectLabelKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glGetObjectPtrLabelKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glGetPointervKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glObjectLabelKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glObjectPtrLabelKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glPopDebugGroupKHR	app=NULL	vendor=NULL
+GL_KHR_debug	glPushDebugGroupKHR	app=NULL	vendor=NULL
+GL_NV_coverage_sample	glCoverageMaskNV	app=non-NULL	vendor=NULL
+GL_NV_coverage_sample	glCoverageOperationNV	app=non-NULL	vendor=NULL
+GL_NV_draw_buffers	glDrawBuffersNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glDeleteFencesNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glFinishFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glGenFencesNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glGetFenceivNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glIsFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glSetFenceNV	app=non-NULL	vendor=NULL
+GL_NV_fence	glTestFenceNV	app=non-NULL	vendor=NULL
+GL_NV_read_buffer	glReadBufferNV	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glGetBufferPointervOES	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glMapBufferOES	app=non-NULL	vendor=NULL
+GL_OES_mapbuffer	glUnmapBufferOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glCompressedTexImage3DOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glCompressedTexSubImage3DOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glCopyTexSubImage3DOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glFramebufferTexture3DOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glTexImage3DOES	app=non-NULL	vendor=NULL
+GL_OES_texture_3D	glTexSubImage3DOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glBindVertexArrayOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glDeleteVertexArraysOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glGenVertexArraysOES	app=non-NULL	vendor=NULL
+GL_OES_vertex_array_object	glIsVertexArrayOES	app=non-NULL	vendor=NULL
+GL_QCOM_alpha_test	glAlphaFuncQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glDisableDriverControlQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glEnableDriverControlQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glGetDriverControlStringQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_driver_control	glGetDriverControlsQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetBufferPointervQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetBuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetFramebuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetRenderbuffersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexLevelParameterivQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexSubImageQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtGetTexturesQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get	glExtTexObjectStateOverrideiQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetProgramBinarySourceQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetProgramsQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtGetShadersQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_extended_get2	glExtIsProgramBinaryQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_tiled_rendering	glEndTilingQCOM	app=non-NULL	vendor=NULL
+GL_QCOM_tiled_rendering	glStartTilingQCOM	app=non-NULL	vendor=NULL
+control	glRc2ProbeNoSuchFunction	app=NULL	vendor=NULL
+app_gl_slots_used	125 of 256
+
+## checks
+check	fbo-rgba8-texture	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgb8-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgb565-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba4-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgb5a1-renderbuffer	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+depth16	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+depth24	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+depth16+stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+depth24stencil8	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	fbo-rgba8tex+depth-texture16	PASS	status COMPLETE; setup GL_NO_ERROR; clear+read GL_NO_ERROR; pixel 00ff00ff
+check	pot-64x64-mipmap (control)	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; glGenerateMipmap GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (POT)
+check	npot-100x60-clamp-nomip	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+check	npot-100x60-repeat-nomip	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+check	npot-100x60-clamp-mipmap	PASS	sampled (pixel ff0000ff); upload GL_NO_ERROR; glGenerateMipmap GL_NO_ERROR; draw GL_NO_ERROR; expected sampled (GL_OES_texture_npot advertised)
+check	fragment-highp-compiles	PASS	compile ok; fragment HIGH_FLOAT range 0..0 precision 0; log: (empty)
+check	fragment-highp-macro	FAIL	GL_FRAGMENT_PRECISION_HIGH not defined; log: 0:2: P0002: #error: no GL_FRAGMENT_PRECISION_HIGH
+check	oes-egl-image-external-sampler	PASS	compile+link ok; GL_OES_EGL_image_external advertised; log: (empty)
+check	readpixels-rgba-ubyte	PASS	err GL_NO_ERROR; got 4080c0ff want 4080c0ff (+-2); surface R8G8B8
+check	readpixels-implementation-format	PASS	format 0x1907 GL_RGB, type 0x8363 GL_UNSIGNED_SHORT_5_6_5; err GL_NO_ERROR; first pixel 1844
+check	max-texture-rgba8-alloc	FAIL	4096x4096 RGBA8 (64 MiB): teximage GL_NO_ERROR; fbo COMPLETE; clear+read GL_NO_ERROR; corner pixel 00000000
+
+## summary
+job	q3	ok
+job	egl	ok
+job	egl-vendor	ok
+job	gles1	ok
+job	gles2	ok
+job	fbo	ok
+job	npot	ok
+job	highp	ok
+job	external	ok
+job	readpixels	ok
+job	maxtex	ok
+done: ok

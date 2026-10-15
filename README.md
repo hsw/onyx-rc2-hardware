@@ -20,6 +20,7 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 | SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3), PL310 L2 256 KiB. The stock DVFS table has one point: **912 MHz at 1.40 V**. PLLs on the running device: APLL 912, DPLL 792, CPLL 640, GPLL 768 MHz | [`soc/README.md`](soc/README.md) (MMIO, IRQs, CRU, GRF, pins), [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
 | RAM | 512 MiB DDR3, **one rank** (ACT8931 DCDC2 1.35 V), DDR at 396 MHz | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3, [`soc/README.md`](soc/README.md) §6 |
 | Panel | 6", **1448×1072**, 122 × 91 mm. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [`panel/README.md`](panel/README.md) (timings against Kindle's, supplies, TPS65185 sequence, VCOM); [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
+| GPU | ARM **Mali-400 MP2**, driver r3p2-01rel0; OpenGL ES 1.1 and 2.0 (GLSL ES 1.00), EGL 1.4, no ES 3; max texture 4096, no fragment highp | [`gpu/README.md`](gpu/README.md) (EGL configs, extensions, limits, entry points, checks, GPU memory, Chromium 83 workarounds) |
 | BootROM | 16 KB mask ROM: boots **microSD first** (SD → NAND → SPI → eMMC → USB), falls through on a bad card, never writes storage. The stock kernel boots from a microSD card with the eMMC untouched | [`bootrom/README.md`](bootrom/README.md), [`bootrom/sdboot/`](bootrom/sdboot/README.md) |
 | Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
 | E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 (`GIC_SPI 49`), `dclk_ebc` 160 MHz from CPLL | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
@@ -210,6 +211,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, interrupts (`GIC_SPI n−32`), CRU (PLLs measured, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1, pin mux and pulls, datasheet contradictions resolved |
 | [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, the TPS65185 sequence and PG, DTS consequences |
 | [`mainline/README.md`](mainline/README.md) | mainline Linux v7.2 status per block and per board chip: what exists, what is missing, a sensible order |
+| [`gpu/README.md`](gpu/README.md), [`gpu/probe/`](gpu/probe/) | Mali-400 MP2 EGL / OpenGL ES 1.1 and 2.0 measured on the device: configs, extensions, limits, precision, entry points, checks, GPU memory, Chromium 83 workarounds; the probe source |
 
 All addresses refer to the stock RC2 kernel built 2017-11-07 (firmware 1.8.2, sha256
 `47a13cf3bf642c7daf8ab1b3716db56fae7d1b85f7b4e552bdb97edd062030af`), which is not public. The public 1.9.1 update carries a 2019-11-05
