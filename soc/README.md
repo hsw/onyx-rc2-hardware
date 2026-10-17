@@ -418,7 +418,7 @@ Offsets from RY `mach-rk3026/include/mach/grf.h`. All control registers below ar
 | 0x300 | `CHIP_TAG` | nobody reads it | 0x292C | — |
 
 Other words read at idle: `GPIO_DS` 0, `DMAC_CON0/2` 0xFFFE / 0x03D0, `CPU_CON0..5` 0x8207, 0, 0x7000, 0, 0x0600, 0x0E00, `OS_REG3`
-0x13247865 (unknown). 0xd8 and 0xdc (no `GPIO3A/B_IOMUX`) were deliberately not read.
+0x13247865 (the cold-boot marker of the stock DDR init, §8). 0xd8 and 0xdc (no `GPIO3A/B_IOMUX`) were deliberately not read.
 
 For mainline [STRONG]:
 - pinctrl: the `rk2928` register layout fits, but **bank 3 ports A/B need `IOMUX_GPIO_ONLY`**: mainline counts mux offsets
@@ -454,7 +454,7 @@ the "kernel" form 0xC35242xx (0xC3524200 for anything it does not know):
 | `OS_REG4` at loader entry | Loader does |
 |---|---|
 | 0x5242C301 | Rockusb |
-| 0x5242C302 (maskrom) | nothing, boots normally: this BootROM reads no flag, so there is no software path into MaskROM (the Rockusb "reset to maskrom" command also just reboots) |
+| 0x5242C302 (maskrom) | nothing, boots normally. The BootROM reads no flag either; the Rockusb "reset to maskrom" command takes another route: it writes `OS_REG4` = 0xEF08A53C and jumps to the BootROM, and the stock DDR init stage then refuses to run, so every copy fails and the ROM ends in USB MaskROM (§8) [STRONG, not tried on the device] |
 | 0x5242C303 | recovery |
 | 0x5242C304 | suppresses a recovery request |
 | 0x5242C306 / 0x5242C307 | recovery with `--wipe_data` / `--wipe_all` |
@@ -646,3 +646,34 @@ the stock FIQ debugger on UART2 is therefore of little use.
 - PL310 attributes for mainline (stock `AUX_CTRL` 0x76030001).
 - Whether the eMMC controller has the dw_mmc internal DMA (IDMAC, `BMOD`/`DBADDR`): stock uses the external PL330 through
   the controller's DMA interface (§1.1); a register dump or a test would tell.
+
+## 8. DDR init by the stock first stage (FlashData)
+
+The init stage of the stock loader's IDB (FlashData, banner `DDR Version 1.08 20140618`) is a complete DDR3 bring-up. Read
+from its code and an emulated run [STRONG; the resulting `GRF_OS_REG1` CONFIRMED-device]. Mario Rugiero's open RK3026 DDR
+init ([Oppen/u-boot](https://github.com/Oppen/u-boot), branch `bringup/rk3026-mainline`, SPL) issues the same DDR controller,
+PHY and NoC writes in the same emulation; it leaves out the clock setup, the detection and the memory test.
+
+- **Clocks:** APLL 600 MHz (CON0/CON1 0x7fff304b / 0x11ff1041: 24 × 75 / 3), GPLL 132 MHz, sdmmc0 = GPLL / 4; then DPLL
+  600 MHz = **DDR 300 MHz** (the stock kernel later runs DDR at 396 MHz).
+- **Controller:** PCTL and PHY soft reset (`CRU_SOFTRST_CON5` bits 8–11), PHY DLL setup, uPCTL DFI and timing registers
+  (at 300 MHz: TCL 6, TCWL 5, TRFC 105, TREFI 78, TRAS 12, TRC 16, TRCD 6, TRP 6, TWR 5), MCFG 0x00050021 (BL8, DDR3, no
+  auto power-down), no auto self-refresh; `GRF_SOC_CON2` bit 7 (DDR3 select of the memory scheduler); NoC DdrTiming
+  (0x1012800c) = 0x24716310, ReadLatency (0x10128014) = 0x3f, DdrConf 2.
+- **PHY:** DQ drive (REG25/26) 0xbb = 44 Ω, DQ ODT (REG27/28) 0x44 = 216 Ω (codes from the RK3026 tables of the vendor
+  `ddr.c` in RY); CL 6, AL 0, BL8.
+- **Mode registers:** MR2 = 0 (CWL 5), MR3 = 0, MR1 = 0x42 (DLL on, drive RZQ/7 = 34 Ω, Rtt_Nom RZQ/2 = 120 Ω), MR0 = 0x320
+  (BL8, CL 6, WR 5, DLL reset); then ZQCL.
+- **DQS squelch (gate) calibration** by the PHY, then two refreshes. No write leveling, no read-eye training, no PHY impedance
+  calibration (fixed drive and ODT codes).
+- **Geometry probing** with test patterns at a few addresses near the start of DRAM: column 10, 8 banks, row 15, 1 rank,
+  ×16 die = 512 MiB → DdrConf 2 and **`GRF_OS_REG1` = 0x6281** (§4.1); then an address-in-address memory test.
+- **Cold and warm path:** a power-on finds no marker, clears `OS_REG0..7` and sets `OS_REG3` = 0x13247865. With the marker
+  present and a geometry in `OS_REG1` it takes a warm path: the same controller init with the stored geometry, and no
+  DRAM write at all, which keeps DRAM contents across a warm reset. Even a cold run writes only its probe and memory-test
+  words at the bottom of DRAM, not the top of RAM where ramoops and the loader logs live.
+- **MaskROM gate:** with the marker present and `OS_REG4[15:0]` = 0xa53c it returns "failed" without touching DDR; the BootROM
+  then tries the next copy and the next medium and ends in USB MaskROM. That is how the stock loader's "reset to maskrom"
+  works (§4.2) [STRONG, not tried on the device].
+- **Console:** UART2 at 115200 8N1 on GPIO2_C6/C7; without VBUS it switches the USB PHY to UART mode (GRF 0x20008190), so the
+  banner goes out on the USB D+/D− pins.
