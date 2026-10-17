@@ -4,7 +4,7 @@ Static analysis, 2026-10-08. Target: the stock RC2 kernel Image (Linux 3.0.36+, 
 `47a13cf3bf642c7daf8ab1b3716db56fae7d1b85f7b4e552bdb97edd062030af`, not public; raw ARM, VA = file offset + 0xc0408000), symbols
 recovered from the Image's own kallsyms table (`../kernel/extract_kallsyms.py`), and the stock 4.2 `/system`. Nothing was run on the
 device for this pass; device evidence comes from earlier captures on the same unit. All addresses refer to that 2017-11-07 kernel;
-see [`tools/README.md`](tools/README.md) for the public 1.9.1 kernel.
+see [`tools/README.md`](tools/README.md) for the public 1.9.1 kernel. §5 adds a power-off test on the device (2026-10-17).
 
 Confidence marks:
 - [CONFIRMED]: read directly in the objdump listing (kernel, ARM) or in the Thumb listing / decompiled Java (userspace) at the given address, or seen in a device log.
@@ -354,6 +354,22 @@ Observed wakes on the device (stock kernel): `wakeup gpio1: 00000010` = 164 POWE
 
 - Nothing new beyond [`../kernel/linux-rockchip-3.0-vs-stock.md`](../kernel/linux-rockchip-3.0-vs-stock.md) §2. The CW2015 `dc_detect_do_wakeup` also calls `rk28_send_wakeup_key` (unused on RC2,
   `dc_detect` IRQ not requested) [CONFIRMED callers].
+
+## 5. Power-off on the device (2026-10-17)
+
+The stock power-off (`rk30_pm_power_off`, [`../board/README.md`](../board/README.md) §4) ends by driving the ACT8931 power hold
+GPIO1_A2 low; on battery it also writes the ACT8931 shutdown bits first. Tested from a mainline kernel booted from microSD
+[CONFIRMED on the device]:
+
+- **Dropping PWR_HOLD alone switches the book off on battery**: every rail goes down (status LED out), no ACT8931 register
+  write is needed. Done once by hand (`devmem` on the GPIO1 data register, cable unplugged) and twice through mainline
+  `gpio-poweroff` on GPIO1_A2 (active low): once on battery, once with the cable pulled while the kernel waited.
+- **With USB power present the book stays powered** after the hold drops (the ACT8931 keeps its rails while VBUS is there [STRONG]).
+  A kernel that keeps waiting with the line low, interrupts off, switches the book off as soon as the cable is pulled.
+- Starting again: a short press of the power key does nothing; a press of about 4 s boots the book (from the eMMC: a cold
+  power-on on battery skipped the microSD card here too, see [`../bootrom/sdboot/README.md`](../bootrom/sdboot/README.md)).
+- Without any power-off handler (`poweroff -f` on a kernel that only has a GPIO hog on the hold line) the kernel only halts:
+  the book stays on until a watchdog, if armed, resets it.
 
 ## Reproduce
 

@@ -129,8 +129,10 @@ multimeter: the register contents and the datasheet curve are enough.
   MSTROFF). The right fix is an `active-semi,act8931` type in the same driver: the ACT8865 regulator tables without the 0x0B write
   and without `set_suspend_*`, plus a `power_supply` for the charger (online = 0x78 bit 1, status from CSTATE), modelled on the
   ACT8600 charger code that already lives in that driver. See [`../mainline/README.md`](../mainline/README.md).
-- `system-power-controller` (MSTROFF, 0x01 bit 5) is documented and is what stock does at power-off, but on the RC2 only the
-  power-hold path (GPIO1_A2 low) has been tested [VERIFY].
+- `system-power-controller` (MSTROFF, 0x01 bit 5) is documented and is what stock does at power-off on battery, but on the RC2
+  only the power-hold path has been tested: GPIO1_A2 low switches the book off on battery with no PMIC write, and with USB
+  power present the board stays up [CONFIRMED, [`../power/README.md`](../power/README.md) §5]. So a `gpio-poweroff` on GPIO1_A2
+  (active low) is enough; MSTROFF stays untested [VERIFY].
 
 ## 2. TPS65185 (i2c2 0x68; WAKEUP high)
 

@@ -78,7 +78,7 @@ Columns: GPIO (number), function on RC2, direction / active level, set by, pcb d
 | GPIO0_D3 (155) | Touch reset (`onyx_get_tp_rst_pin`) | out, active low (xres 1→0→1, 20/40/20 ms) | cyttsp4 pdata `rst_gpio` | all; V1.76: driven low in `rk30_pm_power_off` | CONFIRMED (dmesg `RST gpio=155`) |
 | GPIO1_B0 (168) | "magic" IRQ = magnet/Hall sensor → KEY_POWER | in, no pull, falling edge, `irq_set_irq_wake(…,1)` | `magic_init` (gpio from data+0x4fc, rewritten to 168 on v17x) | v17x; pcb 0/1: GPIO1_A0 (and 168 is the touch IRQ there). Muxed to SPI0_CLK while the panel flash is read | CONFIRMED (`/proc/interrupts` 168 `magic_int`, 22 hits) |
 | GPIO1_A5 (165) | Wi-Fi/BT combo power (RTL8723BU) | out, **active low** (0 = on); boot state high (off) | `rk29sdk_wifi_bt_gpio_control_init` (inline in machine init, label `wifi_power`); `onyx_wifi_bt_module_power` | all | STRONG (logs show the refcount messages) |
-| GPIO1_A2 (162) | PWR_HOLD ("system power on") | out high; low at power-off | machine init `gpio_request_one(…, OUT_INIT_HIGH)`; `rk30_pm_power_off` | all | STRONG |
+| GPIO1_A2 (162) | PWR_HOLD ("system power on") | out high; low at power-off | machine init `gpio_request_one(…, OUT_INIT_HIGH)`; `rk30_pm_power_off` | all | CONFIRMED (driving it low switches the book off on battery, [`../power/README.md`](../power/README.md) §5) |
 | GPIO1_A4 (164) | Power key (`play`, KEY_POWER 116) | in, active low, wakeup=1 | keypad table entry 0 | all | CONFIRMED (`/proc/interrupts` 164 `play`; resume log `wakeup gpio1: 00000010` = bit 4) |
 | GPIO2_B5 (205) | Page up key (KEY_PAGEUP 104) | in, active low, wakeup=1 | machine init rewrites table entry (ADC 177 → GPIO) | v17x; pcb 0/1: ADC key | CONFIRMED (dmesg `Keycode [104] config changed to GPIO[205]`) |
 | GPIO2_B6 (206) | Page down key (KEY_PAGEDOWN 109) | in, active low, wakeup=1 | same (ADC 100 → GPIO) | v17x | CONFIRMED |
@@ -283,7 +283,8 @@ GPIO, `enable_sd_wakeup = 0`. sdmmc1 (SDIO, unused): caps include SDIO_IRQ, OCR 
    - on V1.76 only, drive the touch RST GPIO0_D3 low;
    - `act8931_device_shutdown` (reg 0x01 bits 0x23).
 4. Finally drive GPIO1_A2 low and spin.
-[STRONG]
+[STRONG]. On the device, step 4 alone is enough on battery: dropping GPIO1_A2 switches every rail off with no ACT8931 write;
+with USB power present the board stays up until the cable goes ([`../power/README.md`](../power/README.md) §5) [CONFIRMED].
 
 **`rk3026_power_on(enable)`** (codec `power_set`): `act_ldo3` on (msleep 20) / off. LDO3 is also the SD rail, so the codec and the
 microSD share it [STRONG].
@@ -399,8 +400,8 @@ revision of the same board (pcb_ver 0/1 vs 2/3), so the pcb table in §5 is the 
 
 - [DTS] PMIC ACT8931 @ i2c0 0x5b (no IRQ). Real outputs (register readback, [`../pmic/README.md`](../pmic/README.md)): DCDC1 VCCIO
   3.4 V (3.5 V with Wi-Fi), DCDC2 DDR 1.35 V, DCDC3 ARM 1.40 V, LDO1 touch 3.1 V, LDO3 SD 3.1 V, LDO4 EPD logic 3.1 V (off between
-  updates), LDO2 unused. Stock prints 3.3 / 3.4 / 3.0 V for these (table bug, §2). Power hold GPIO1_A2 (active high); GPIO0_A3 =
-  VSEL, driven high → `active-semi,vsel-high`.
+  updates), LDO2 unused. Stock prints 3.3 / 3.4 / 3.0 V for these (table bug, §2). Power hold GPIO1_A2 (high = on; power-off = a
+  `gpio-poweroff` node on it, active low, tested on the device); GPIO0_A3 = VSEL, driven high → `active-semi,vsel-high`.
 - [DTS] Fuel gauge CW2015 @ i2c0 0x62, ALRT GPIO1_B1 active low (pull-up); charge-current selects GPIO1_B2 and GPIO1_A1 (driven
   high); USB-only charging; no charge-done input on V1.73 (GPIO0_A2 on pcb 0/1). Battery profile: 64 bytes inline at 0xc0a71628 (extractable).
 - [DTS] RTC HYM8563 @ i2c0 0x51, IRQ GPIO1_B3.
