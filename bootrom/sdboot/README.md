@@ -56,8 +56,15 @@ The stage2 binary in the tests above has sha256 `11e3dec2a942ffd5ee66a80b435791b
   cold power-on with USB attached boots the card. A cold power-on without USB boots the eMMC; the DDR log area held no stage2 log,
   so the ROM skipped the card. Either the card is not ready within the ROM's ACMD41 budget (2040 polls without delay, about 1 s)
   when everything powers up at once, or LDO3 is off at a cold start without VBUS. Workaround: power on into Android, then reboot.
-- **Card inserted into a running book, then the reset pinhole: the ROM skipped the card** [CONFIRMED once, cause VERIFY]. A cold
-  power-on with the same card worked straight away. Insert the card, then power on.
+- **Reset pinhole with the card in: the ROM skipped the card** [CONFIRMED, cause VERIFY]. First seen with a card inserted into a
+  running book; later every pinhole reset with the card already in booted the eMMC (more than ten tries), while software resets
+  (`reboot`, the watchdog) boot the card. A cold power-on with the card worked. Insert the card, then power on.
+- **Warm reset from a kernel that leaves dirty cache lines** [CONFIRMED with mainline Linux]. Like stock FlashBoot, stage2
+  invalidates only the I-cache and the branch predictor and runs with the D-cache off. The stock kernel cleans its caches
+  before it resets, so `reboot` from it is fine. Mainline's restart path, or a watchdog reset of a hung kernel, leaves the
+  dead kernel's lines in L1, and the next kernel then faults right after the decompressor's jump. The fix is to invalidate
+  the whole L1 D-cache by set/way plus TLB, I-cache and branch predictor at stage2 entry
+  ([`../../soc/README.md`](../../soc/README.md) §4.5); the stage2 published here does not do that yet.
 - One boot reached `jump` and then showed a blank panel; the stage2 log read back afterwards had bit flips. Not reproduced.
 - The test ramdisk's LED heartbeat goes through the stock `leds-ctl` driver, which prints a line to the kernel log on every write.
 
@@ -78,7 +85,7 @@ except where the table says otherwise.
 | power hold GPIO1_A2 | high (early, and again before the jump) | high, first instructions |
 | GRF_SOC_CON0 bit 12 | set at FlashBoot entry | set as the very last write before the jump |
 | CPU1 | soft reset asserted | same |
-| waveform at 0x7ff00000 | 256 KiB from the eMMC boot area | `ebc_waveform.bin` from the card |
+| waveform at 0x7ff00000 | 256 KiB from eMMC user sectors 0x1800–0x19FF, which are all zero on this book | `ebc_waveform.bin` from the card |
 | PLLs, DDR, PMIC, watchdog, USB | not touched (as the DDR init left them; the kernel reprograms them) | not touched |
 | NAND controller flash info (0x10501000), eMMC | prepared for `rk30xxnand_ko` | **never touched** |
 
@@ -89,8 +96,9 @@ except where the table says otherwise.
 - `onyx_emmc=1` must stay. It moves the SD card-detect to GPIO2_A3, as on the eMMC boards. Without it the kernel does not see the card.
 - `pcb_ver=2` is what the stock loader passes on this board.
 - `mtdparts` is dropped. Only the NAND/eMMC module `rk30xxnand_ko` uses it, and that module must not be loaded on the SD path.
-- The stock kernel overwrites the waveform at 0x7ff00000 with `/ebc_waveform.bin` from the initramfs. Both copies should be the
-  same file.
+- The stock kernel overwrites the waveform at 0x7ff00000 with `/ebc_waveform.bin` from the initramfs. On this book the stock
+  loader's copy is zeros (the eMMC area is empty, [`../../device/README.md`](../../device/README.md)), so the initramfs file is
+  the only waveform; stage2 loads the same file so the area is valid from the start.
 - `rc2.root=sd` is a flag for the ramdisk's `/init`: the system was started from the card ([Ramdisk](#ramdisk)).
 
 ## Storage access: the ROM's own read routine

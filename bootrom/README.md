@@ -31,6 +31,8 @@ order SD → eMMC → NAND → USB is not right for this ROM: NAND and SPI come 
 copies, the ROM moves on and boots the eMMC as usual [CONFIRMED]. So pulling the card, or erasing its IDBlock on another computer,
 is a safe recovery. If the card's IDBlock is accepted and its code then hangs, nothing rescues it. The ROM never arms the watchdog
 and never returns to the next medium on its own. You have to reset (pinhole or power) **with the card removed** [STRONG].
+A watchdog armed by a later stage (U-Boot, Linux `dw_wdt`) is a different case: its reset runs the ROM's normal order again,
+microSD first, and keeps the DDR contents [CONFIRMED on the RC2, [`../soc/README.md`](../soc/README.md) §4.5].
 
 **Q6: writes.** The ROM never writes to SD, eMMC, NAND or SPI. It contains no write or erase command [CONFIRMED].
 
@@ -221,13 +223,15 @@ parts on that controller [STRONG].
 boot area, most likely boot partition 1. Evidence:
 
 - the device boots, and the boot operation is the only ROM path a real eMMC can pass;
-- `rkflashtool` (Rockusb `i 0 0x1000`) returns a 2 MiB "IDB area" (a typical boot-partition size) with copy 0 at sector 0 and copies at
-  1024/2048/3072;
+- `rkflashtool i` (Rockusb PBA read) reads the eMMC hardware boot partitions boot1 and boot2 (their first 512 KiB each); a
+  2 MiB `i 0 0x1000` dump is boot1 + boot2 + boot1 + boot1, which looked like copies at 0/1024/2048/3072 (the loader folds
+  every PBA ≥ 0x800 back onto boot1; [`../device/README.md`](../device/README.md)). The two partitions hold the same IDB;
 - logical LBA 0 holds `parameter`, not an IDB (no magic in 0..0x2000);
 - loader 2.32 has EXT_CSD helpers for `PARTITION_CONFIG` (179, it sets BOOT_PARTITION_ENABLE=1 if it reads 0) and
   `BOOT_BUS_WIDTH` (177).
 
-Which boot partition is used, and the exact EXT_CSD values, are [VERIFY]. Read EXT_CSD from a Linux with the mmc subsystem; the stock
+Hardware boot partitions exist and boot1 = boot2 in their first 512 KiB [CONFIRMED: the user area holds no IDB copy at 0,
+only a 32-sector header stub at sector 0x40]. Which of the two is enabled for boot, and the exact EXT_CSD values, are [VERIFY]. Read EXT_CSD from a Linux with the mmc subsystem; the stock
 kernel uses rk30xxnand.
 
 [DANGER] Never change EXT_CSD 177/179 or the boot partition from a custom kernel. That is the only eMMC boot path, and losing it leaves
@@ -266,7 +270,9 @@ IDBlock wins at **every** reset until it is removed or its header is destroyed.
   referenced, and the DW watchdog is disabled after reset [STRONG].
 - The device stays hung until reset or power-off. Then **pull the card**, and the next reset boots the eMMC.
 - The RC2 has a reset pinhole. Whether the board stays powered while hung, with power hold GPIO1_A2 not driven, is [VERIFY]
-  (harmless either way).
+  (harmless either way). After a warm reset the hold is still high from the previous run (the GPIO block keeps its state), so
+  a reset that ends in a hang leaves the book powered: panel black, no USB, the power key ignored, until the pinhole
+  [CONFIRMED].
 
 **Init stage returns non-zero.** The ROM tries the next copy, then the next medium. eMMC boots normally [CONFIRMED].
 
@@ -275,6 +281,9 @@ IDBlock wins at **every** reset until it is removed or its header is destroyed.
 
 - Vendor request `0x0c`: wIndex `0x471` loads to SRAM `0x10080800`, `0x472` to DDR `0x60000000`. The image must start with
   `"RK30"`, and the ROM jumps to +4.
+- Software can land here on purpose: after a warm reset with `GRF_OS_REG4[15:0]` = 0xa53c the stock DDR init stage returns
+  "failed" for every copy, so the ROM ends in USB MaskROM. That is the stock loader's Rockusb "reset to maskrom"
+  ([`../soc/README.md`](../soc/README.md) §8) [STRONG, not tried on the device].
 - While it waits for eMMC boot data, the ROM also sends `D2 "RK292C" D2` on UART2 about every 50 ms [STRONG].
 
 ## 6. Writes (Q6) [CONFIRMED]
@@ -298,9 +307,9 @@ The card tests below have since run on the RC2. Results, and a working SD boot o
    the RC2, whatever the code does.
 2. Does a given card report one of the two "good" OCR values (block addressing) or hit the OCR bug?
 3. The ACMD41 budget is 2040 polls with no delay. A slow card might time out; the expected cost is about 1 s, not measured.
-4. Which eMMC boot partition and EXT_CSD values are used.
+4. Which eMMC boot partition is enabled for boot, and the EXT_CSD values (boot partitions exist, boot1 = boot2).
 5. The SRAM size behind `0x10080800`.
-6. Power behaviour while hung.
+6. Power behaviour while hung with the power hold never driven (after a warm reset it stays high, see §5).
 
 **Safest test** (no flashing, no writes to the book):
 
@@ -361,7 +370,7 @@ The RC4 S-box at `0x2e34` was compared byte for byte with the key schedule of th
 | Address | Contents |
 |---|---|
 | `+0x000` | delay factor: 24, or `0xC0` after the PLL is set up |
-| `+0x004`, `+0x008` | CPU1 mailbox |
+| `+0x004`, `+0x008` | CPU1 mailbox: every core writes 1 to `+0x004` at reset; a secondary core then waits (WFE) until `+0x004` = `0xDEADBEAF` and jumps to the address in `+0x008` ([`../soc/README.md`](../soc/README.md) §4.3) |
 | `+0x00c` | secure flag |
 | `+0x014`–`0x018` | SPI type and offset |
 | `+0x01c`–`0x02c` | NAND parameters |
