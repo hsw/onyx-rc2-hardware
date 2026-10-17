@@ -39,7 +39,7 @@ What the runs showed [CONFIRMED-device unless marked]:
 - **CPU1** needs a reset pulse after the trampoline is in IMEM, because on the RK3026 the assert write itself restarts the
   core and the deassert does nothing. Without it a clean v7.1.13 kernel reports `CPU1: failed to come online`; with it 2
   CPUs, and hotplug and kexec work. The kernel owns the IMEM remap (`GRF_SOC_CON0` bit 12) and sets it only around the
-  pulse ([`../soc/README.md`](../soc/README.md) §4.3).
+  pulse ([`../soc/README.md`](../soc/README.md) §4.3, IMEM usage in §1.3).
 - **Timer PPIs** (global timer, TWD) are rising edge on the Cortex-A9; the level-high form gives `GIC: PPI13 is secure or
   misconfigured` for every CPU.
 - **Hard-float userspace needs `CONFIG_VFP`/`CONFIG_VFPv3`/`CONFIG_NEON`.** The C67ML slim defconfig sets

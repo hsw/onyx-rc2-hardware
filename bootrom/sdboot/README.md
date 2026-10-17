@@ -97,10 +97,13 @@ except where the table says otherwise.
 | PLLs, DDR, PMIC, watchdog, USB | not touched (as the DDR init left them; the kernel reprograms them) | not touched |
 | NAND controller flash info (0x10501000), eMMC | prepared for `rk30xxnand_ko` | **never touched** |
 
-- **GRF_SOC_CON0 bit 12** (`0x20008140` = `0x10001000`) maps IMEM at address 0 instead of the ROM. The kernel starts CPU1 through
+- **GRF_SOC_CON0 bit 12** (`0x20008140` = `0x10001000`) maps IMEM at address 0 instead of the ROM
+  ([`../../soc/README.md`](../../soc/README.md) §1.3). The kernel starts CPU1 through
   that mapping, so without it the kernel runs on one CPU. stage2 still needs the ROM at address 0 for its reads, so it sets the bit
   as its last write, after all reads are done. On hardware the kernel then reported 2 CPUs [CONFIRMED].
-- **CPU1** is held in soft reset (`CRU_SOFTRST_CON0` = `0x00100010`), as stock does. The kernel's `boot_secondary` releases it.
+- **CPU1**: stage2 writes the reset assert (`CRU_SOFTRST_CON0` = `0x00100010`) as stock does. On the RK3026 that write
+  restarts CPU1 into the ROM wait loop instead of holding it; the kernel starts it with a reset pulse (§4.3 and §1.3 of
+  [`../../soc/README.md`](../../soc/README.md)).
 - `onyx_emmc=1` must stay. It moves the SD card-detect to GPIO2_A3, as on the eMMC boards. Without it the kernel does not see the card.
 - `pcb_ver=2` is what the stock loader passes on this board.
 - `mtdparts` is dropped. Only the NAND/eMMC module `rk30xxnand_ko` uses it, and that module must not be loaded on the SD path.

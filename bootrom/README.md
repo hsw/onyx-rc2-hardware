@@ -367,6 +367,9 @@ The RC4 S-box at `0x2e34` was compared byte for byte with the key schedule of th
 
 ### IMEM map used by the ROM [CONFIRMED]
 
+The other users of IMEM (stock loader, stock and mainline kernels) and the address-0 remap:
+[`../soc/README.md`](../soc/README.md) §1.3.
+
 | Address | Contents |
 |---|---|
 | `+0x000` | delay factor: 24, or `0xC0` after the PLL is set up |

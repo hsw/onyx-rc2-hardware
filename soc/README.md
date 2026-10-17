@@ -55,7 +55,7 @@ Confidence marks on this page:
 - **Reboot flags:** stock writes `GRF_OS_REG4` (0x1d8) with the same values as mainline `syscon-reboot-mode`; the stock loader
   acts on `0x5242C301` (Rockusb) and `0x5242C303` (recovery) and boots normally on most other values (§4.2).
 - **CPU1:** there is no PMU, and the core soft reset does not hold the core: **the assert write itself restarts CPU1 at
-  address 0**, the deassert does nothing. Address 0 is IMEM only while `GRF_SOC_CON0` bit 12 is set. Mainline
+  address 0**, the deassert does nothing. Address 0 is IMEM only while `GRF_SOC_CON0` bit 12 is set (§1.3). Mainline
   `rockchip,rk3036-smp` brings CPU1 up on this Cortex-A9 with two changes: a reset pulse once the trampoline is in place, and
   the remap set only around that pulse. Hotplug works (§4.3).
 - **Warm resets:** `GLB_SRST_SND`, `GLB_SRST_FST` and a watchdog reset all restart through the BootROM (microSD first) and keep
@@ -70,7 +70,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 
 | Base | Size | Block | RC2 evidence | ML candidate | Mark |
 |---|---|---|---|---|---|
-| 0x10080000 | 8 KiB | IMEM (SRAM) | stock keeps its sleep code and the CPU1 trampoline there; the custom loader runs from it | `mmio-sram` + `rockchip,rk3066-smp-sram` at offset 0 (as `rk3036.dtsi`) | CONFIRMED-device |
+| 0x10080000 | 8 KiB | IMEM (SRAM) | stock keeps its sleep code and the CPU1 trampoline there; the custom loader runs from it; usage map and address-0 remap in §1.3 | `mmio-sram` + `rockchip,rk3066-smp-sram` at offset 0 (as `rk3036.dtsi`) | CONFIRMED-device |
 | 0x10090000 | 64 KiB | GPU Mali-400 **MP2** | `Mali_GP` +0, `Mali_L2` +0x1000, `GP_MMU` +0x3000, `PP0_MMU` +0x4000, `PP1_MMU` +0x5000, `PP0` +0x8000, `PP1` +0xa000 | `arm,mali-400` (lima); RK3036 has one PP | CONFIRMED-device |
 | 0x10100000 | 16 KiB | BootROM | dumped, see [`../bootrom/README.md`](../bootrom/README.md) | — | CONFIRMED-device |
 | 0x10104000 | 16 KiB | VPU | `vpu` (VEPU +0, VDPU +0x200) | `rockchip,rk3066-vpu` at the same address in `rk3xxx.dtsi` | CONFIRMED-device |
@@ -216,6 +216,57 @@ Read on the device from a mainline-based U-Boot and checked against mainline Lin
   (the microSD exported to the host; about 18 MB/s read and 19 MB/s write from a Mac) works. U-Boot's CDC ACM console and
   `ums` work too; after a `ums` run ended by an eject the ACM console stays deaf (the host keeps resetting the bus and
   the device only enumerates at full speed) [CONFIRMED-device; cause VERIFY].
+
+### 1.3 IMEM (internal SRAM, 0x10080000)
+
+The on-chip SRAM, called IMEM in the vendor sources. The BootROM keeps its variables and stacks there and runs the first
+stage (DDR init) from it; CPU1 starts from it; the stock kernel keeps its sleep and reboot code in it.
+
+| Property | Value | Mark |
+|---|---|---|
+| Base, size | 0x10080000, **8 KiB**: RY `io.h` (`SZ_8K`), DS V1.2 §1.2.2 (8 KB SRAM next to the 16 KB BootROM); the stock kernel uses it up to +0x1ff8. Whether anything lies above +0x2000: [`../bootrom/README.md`](../bootrom/README.md) §7 | STRONG |
+| Second address | address 0, while `GRF_SOC_CON0` bit 12 is set (below); with the bit clear, address 0 is the BootROM | CONFIRMED-device |
+| Clock, reset | gate `ACLK_INTMEM` 4/12 (from `aclk_cpu_pre`), reset `SRST_INTMEM` 1/5 (CON/bit as in §3.3). The vendor enables the gate at clock init and holds it open in suspend; its reboot sweep leaves INTMEM out of the module resets it asserts, since it runs from IMEM | CONFIRMED-src |
+| Warm reset | contents kept, except what the BootROM writes on the next boot: +0, +4 and +0xc always; on the microSD path also the card words +0x40…+0x46, the S-box at +0x64, the stacks +0x2b8…+0x767 and the init stage from +0x800. A debug kernel's words at +0x10 and +0x20…+0x3b read back unchanged in the next boot (§4.5) | kept CONFIRMED-device; ROM writes CONFIRMED-dis |
+| Power-off | volatile; the stock kernel zeroes it at boot anyway | — |
+
+**Address 0.** `GRF_SOC_CON0` bit 12 (hiword: set 0x10001000, clear 0x10000000) maps IMEM at address 0, so a core that
+leaves reset fetches IMEM+0; with the bit clear it fetches the BootROM (also at 0x10100000). The GRF keeps the bit over a
+warm reset [STRONG for SND, VERIFY for FST; §4.5], and the BootROM can run only while it is clear.
+
+| Who | Remap | Mark |
+|---|---|---|
+| BootROM | never writes it; a core that restarts with it set lands in IMEM and never reaches the ROM (§4.5) | STRONG |
+| stock loader (FlashBoot) | sets it early, before it copies its vector table to address 0; leaves it set for the kernel | CONFIRMED-dis |
+| stock kernel | needs it set for the whole uptime: its cached SRAM mapping is VA 0xfef00000 → **physical 0**, so it copies its sleep code to IMEM and runs it through the address-0 alias ([`../power/README.md`](../power/README.md) §1.2); `SOC_CON0` reads 0x1420 at run time (§4.1). Only the reboot path clears it, then calls its reset routine through the uncached 0x10080000 mapping (§4.2) | mapping CONFIRMED-dis, 0x1420 CONFIRMED-device; that this is why the bit stays set STRONG |
+| sdboot stage2 | sets it as its last write before the kernel jump, because its SD reads call the BootROM at address 0 ([`../bootrom/sdboot/README.md`](../bootrom/sdboot/README.md) "Hand-off") | CONFIRMED-device |
+| mainline `platsmp.c` (`rockchip,rk3036-smp`) as is | never writes it: relies on the loader and leaves it set | CONFIRMED-src |
+| mainline + RC2 patch 9 ([`../mainline/README.md`](../mainline/README.md) §0) | clears it when preparing the cores, sets it right before the CPU1 reset pulse; the new core clears it again once it runs from DDR (§4.3) | CONFIRMED-device |
+
+**Usage by offset.** The rows overlap on purpose: each owner reuses IMEM once the previous one is done.
+
+| Offset | Owner, when | Contents | Mark |
+|---|---|---|---|
+| +0x000…+0x767 | BootROM, every boot | delay factor +0, CPU1 mailbox +4/+8, secure flag +0xc, NAND geometry +0x2c, SD card class +0x40, controller +0x44, RC4 S-box +0x64, stacks +0x2b8…+0x767 (full table: [`../bootrom/README.md`](../bootrom/README.md) "IMEM map used by the ROM"). sdboot stage2 still needs +0, +0x40 and +0x44 for the ROM read routine | CONFIRMED-dis |
+| +0x800… | BootROM loads the init stage here and calls it; stock: the 4 KiB DDR init (§8) | init-stage code and data | CONFIRMED-dis |
+| +0x000…+0x4f7 | stock loader | its vector table, copied to address 0 after the remap. The reset entry checks MPIDR: CPU0 stays in the loader, any other core goes back to the ROM wait loop | CONFIRMED-dis |
+| +0x000…+0x00f | stock kernel, CPU1 start | trampoline: `ldr pc` at +0, the physical entry address at +4 (16 bytes copied) | CONFIRMED-src (RY `mach-rk30/headsmp.S`, `platsmp.c`) |
+| +0x010…+0x1b27 | stock kernel, from boot | sleep and reboot code (6936 B); the reboot routine is at +0xf10 | CONFIRMED-dis |
+| +0x1b28…+0x1d13 | stock kernel | data of that code (492 B) | CONFIRMED-dis |
+| up to +0x1ff8 | stock kernel, in suspend | stack (top +0x1ff8, grows down) | CONFIRMED-dis |
+| +0x000…+0x007 | mainline (`mmio-sram` 0x10080000 + 0x2000, `smp-sram@0` with `reg = <0 0x10>`) | trampoline `ldr pc, [pc, #-4]` at +0, the physical address of `secondary_startup` at +4 | CONFIRMED-device (read back) |
+
+Details of the stock code: [`../power/README.md`](../power/README.md) §1.2. Mainline leaves +0x10…+0x1fff unused today; a
+suspend-to-RAM driver would need its code there, as stock does ([`../mainline/README.md`](../mainline/README.md)).
+
+**+4 is shared** [CONFIRMED-dis on the ROM; consequences STRONG]. The ROM mailbox word +4 is also the address word of both
+trampolines. Every core that passes the ROM reset path writes 1 there: CPU0 on every warm reset, CPU1 whenever it is
+restarted with the remap clear. A trampoline copied before such a pass loses its target, so the kernel has to copy it after
+the last ROM pass and before the pulse. Nobody writes 0xDEADBEAF, so the ROM never releases a waiting core through +8.
+A core parked in the ROM wait loop wakes on every SEV; once the remap is set it continues at the loop's offset in IMEM
+(inside the S-box copy) and runs IMEM data as code until a reset pulse restarts it (§4.3). sdboot stage2 leaves CPU1
+exactly there: it asserts the CPU1 reset while address 0 is still the ROM and sets the remap last, so CPU1 runs loose in
+IMEM from the kernel's first SEV until the kernel restarts it (harmless so far).
 
 ## 2. Interrupts
 
@@ -405,7 +456,7 @@ Offsets from RY `mach-rk3026/include/mach/grf.h`. All control registers below ar
 |---|---|---|---|---|
 | 0x0a8 + 0x10·bank + 4·port | `GPIOnX_IOMUX` | 2 bits per pin, function 0…3 (§5). GPIO3 has only C (0xe0) and D (0xe4); ports 3A/3B have no mux register | §5 | `rockchip,rk2928-pinctrl`: mux at 0xa8, 4 banks × 32 — same |
 | 0x118 + 8·bank + 4·(pin/16) | `GPIOnL/H_PULL` | 1 bit per pin: **1 = pull disabled**, 0 = pull enabled in the pin's own direction (up or down; the datasheet gives GPIO2_B/C a pull-down) | §5.2 | `rk2928_calc_pull_reg_and_bit`; DTS: only `bias-disable` / `bias-pull-pin-default` |
-| 0x140 | `SOC_CON0` | **bit 12: IMEM mapped at address 0** (set by the loader for CPU1; the vendor clears it only before a reboot). Survives a warm reset (§4.5) | 0x1420: remap still on at run time | RK3026 mainline: set only around the CPU1 reset pulse (§4.3) |
+| 0x140 | `SOC_CON0` | **bit 12: IMEM mapped at address 0** (set by the loader for CPU1; the vendor clears it only before a reboot). Survives a warm reset (§4.5). Who sets it: §1.3 | 0x1420: remap still on at run time | RK3026 mainline: set only around the CPU1 reset pulse (§4.3) |
 | 0x144 | `SOC_CON1` | **bits 11–14: I2C0…I2C3 served by the new rk30 controller** (mask bits 27–30) | 0x7802: all four set | `i2c-rk3x` writes `BIT(27+n) \| BIT(11+n)`, but no SoC uses offset 0x144: a `rockchip,rk3026-i2c` with `grf_offset = 0x144` is needed |
 | 0x148 | `SOC_CON2` | idle requests, bits 8–13 | 0x0082: no requests | `rk3036_pm_domains` uses bits 8–14 at the same offset |
 | 0x14c | `SOC_STATUS0` | idle acks 16–21, idle 22–27; **USB: bvalid bit 7, DP/DM 9:8, id bit 10** | 0x04BF with the cable: bvalid 1, id 1 (B-device), line state 0 | RK3036 table: bvalid bit 8, line state 10:9, id bit 11 — **shifted by one**, so the RK3036 data does not fit |
@@ -476,7 +527,7 @@ deassert write (0x00100000) does nothing to the core. Shown with a diagnostic ke
 and then asserted only: the record appeared within microseconds of the assert write, the bit still read 1 100 ms later, and
 the deassert left the record unchanged. So CPU1 runs whatever sits at address 0 **at the moment of the assert write**.
 
-- Address 0 is the BootROM, or IMEM (0x10080000) while `GRF_SOC_CON0` bit 12 is set.
+- Address 0 is the BootROM, or IMEM (0x10080000) while `GRF_SOC_CON0` bit 12 is set; who sets it and what lies at IMEM+0: §1.3.
 - **A secondary core in the BootROM** [CONFIRMED-dis on the ROM, [`../bootrom/README.md`](../bootrom/README.md)]: every core
   first writes 1 to IMEM+4; a core with MPIDR ≠ 0 then waits in a WFE loop until IMEM+4 == **0xDEADBEAF** and jumps to the
   address in IMEM+8, with no cache, MMU or SCU setup. Every SEV from CPU0 (each `spin_unlock`) wakes it for one more check, so
@@ -541,7 +592,8 @@ What a warm reset does **not** clear, and what follows from it:
 - **The GRF**, including the IMEM remap (`SOC_CON0` bit 12) [STRONG for SND: the vendor clears the remap before every reset,
   and every reset on the device came back only with it off; VERIFY for FST]. With the remap set, a core that restarts at
   address 0 lands in IMEM, not in the BootROM.
-- **IMEM.** The BootROM rewrites only IMEM+0 (delay factor), +4 (mailbox) and +0xc (secure flag) [CONFIRMED-dis]; anything
+- **IMEM** (usage map: §1.3). The BootROM rewrites only IMEM+0 (delay factor), +4 (mailbox) and +0xc (secure flag)
+  [CONFIRMED-dis]; anything
   else a kernel left in IMEM 0x00–0x3f is still there in the next boot, right where a restarted CPU1 lands while the remap
   is set. With a diagnostic kernel that kept the remap set and left data there, warm resets into itself died between
   frames; clearing the remap and zeroing IMEM 0x00–0x3f before every reset, and setting the remap only around the CPU1
