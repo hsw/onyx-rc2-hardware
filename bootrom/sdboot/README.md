@@ -27,7 +27,7 @@ power on / reset
 |---|---|
 | write a card: `write-card.sh` (+ `diskguard.py`, `mbrguard.py`, `formatdata.py`) | macOS built-ins only: `diskutil`, `dd`, `newfs_msdos`, `fsck_msdos`, `shasum`, `stat`, `mktemp`, and `python3` with the standard library only (`/usr/bin/python3` of the Xcode Command Line Tools, 3.9, is enough). No Homebrew |
 | card image: `mkcard.py` | `python3` (standard library) and e2fsprogs for partition 1: `brew install e2fsprogs` on macOS (keg-only: used from `/opt/homebrew/opt/e2fsprogs/sbin`, `E2FSPROGS_SBIN` overrides), `/usr/sbin` on Linux. Same bytes for one e2fsprogs version (1.47.4 here). `mkdata.sh` (a prefilled `--data-img`) also needs mtools and dosfstools |
-| stage2: `stage2/build.sh` | Homebrew `llvm` and `lld` (`brew install llvm lld`; Apple clang has no `ld.lld` or `llvm-objcopy`; `LLVM`/`LLD` override the paths). Same toolchain, same bytes: built with clang/LLD 23.1.3 (recorded in `toolchain.txt` next to `stage2.bin`); another version may give other bytes |
+| stage2: `stage2/build.sh` | Homebrew `llvm` and `lld` (`brew install llvm lld`; Apple clang has no `ld.lld` or `llvm-objcopy`; `LLVM`/`LLD` override the paths). Same toolchain, same bytes: built with clang/LLD 23.1.3 (recorded in `toolchain.txt` next to `stage2.bin`), `stage2.bin` is `b95cfad9…` (`tests/run.sh` checks it whenever the toolchain is 23.1.3); another version may give other bytes |
 | tests: `tests/run.sh` | all of the above, and `uv` (Unicorn 2.1.4 and Capstone 5.0.7 come as inline script dependencies, Python ≥ 3.10). Optional: mtools and dosfstools (FAT32 cross-checks, `SKIP` lines without them), shellcheck. `test_format_data.py` needs macOS (`diskutil image attach`), `SKIP` elsewhere |
 
 ## Status
@@ -47,8 +47,11 @@ Tested on the RC2 with a 2 GB SanDisk SDSU02G card (SDSC, byte addressing) [CONF
 Only in emulation (Unicorn on the BootROM dump, [Tests](#tests)): SDHC cards (block addressing), SD read errors and retries,
 every failure path of stage2, and `--chunk` values above 4.
 
-The stage2 binary in the tests above has sha256 `11e3dec2a942ffd5ee66a80b435791b852bfee46729692df55d9287cb8aefa83` (6536 B).
-`stage2/build.sh` with Homebrew clang and LLD 23.1.3 rebuilds exactly these bytes.
+The stage2 binary in the tests above has sha256 `11e3dec2a942ffd5ee66a80b435791b852bfee46729692df55d9287cb8aefa83` (6536 B),
+built from the sources before the L1 invalidate at entry. The current stage2 (with it, see [Fixed](#fixed)) has sha256
+`b95cfad9fe6be2d1933d8281d0e5f4b8956d401a9354300b92a02eaa676260a5` (6628 B); it was used on the book for the warm-reset
+tests from mainline Linux. `stage2/build.sh` with clang and LLD 23.1.3 (Homebrew on macOS, or the official release on Linux)
+rebuilds exactly these bytes.
 
 ### Known failures
 
@@ -59,14 +62,19 @@ The stage2 binary in the tests above has sha256 `11e3dec2a942ffd5ee66a80b435791b
 - **Reset pinhole with the card in: the ROM skipped the card** [CONFIRMED, cause VERIFY]. First seen with a card inserted into a
   running book; later every pinhole reset with the card already in booted the eMMC (more than ten tries), while software resets
   (`reboot`, the watchdog) boot the card. A cold power-on with the card worked. Insert the card, then power on.
-- **Warm reset from a kernel that leaves dirty cache lines** [CONFIRMED with mainline Linux]. Like stock FlashBoot, stage2
-  invalidates only the I-cache and the branch predictor and runs with the D-cache off. The stock kernel cleans its caches
-  before it resets, so `reboot` from it is fine. Mainline's restart path, or a watchdog reset of a hung kernel, leaves the
-  dead kernel's lines in L1, and the next kernel then faults right after the decompressor's jump. The fix is to invalidate
-  the whole L1 D-cache by set/way plus TLB, I-cache and branch predictor at stage2 entry
-  ([`../../soc/README.md`](../../soc/README.md) §4.5); the stage2 published here does not do that yet.
 - One boot reached `jump` and then showed a blank panel; the stage2 log read back afterwards had bit flips. Not reproduced.
 - The test ramdisk's LED heartbeat goes through the stock `leds-ctl` driver, which prints a line to the kernel log on every write.
+
+### Fixed
+
+- **Warm reset from a kernel that leaves dirty cache lines** [CONFIRMED with mainline Linux]. The Cortex-A9 does not
+  invalidate its caches on reset. Like stock FlashBoot, stage2 up to `11e3dec2…` invalidated only the I-cache and the branch
+  predictor and ran with the D-cache off. The stock kernel cleans its caches before it resets, so `reboot` from it was fine;
+  mainline's restart path, or a watchdog reset of a hung kernel, left the dead kernel's lines in L1, and the next kernel
+  faulted right after the decompressor's jump. stage2 now invalidates the whole L1 D-cache by set/way (invalidate only,
+  never clean) plus TLBs, I-cache and branch predictor at entry ([stage2](#stage2),
+  [`../../soc/README.md`](../../soc/README.md) §4.5). With `b95cfad9…` on the card, `reboot -f` (`GLB_SRST_SND`),
+  and `GLB_SRST_FST` from mainline Linux came back to the card [CONFIRMED].
 
 ## Hand-off: stock loader vs stage2
 
@@ -77,7 +85,7 @@ except where the table says otherwise.
 |---|---|---|
 | r0 / r1 / r2 | 0 / 3066 (MACH RK30, the kernel's only `machine_desc`) / 0x60000800 | same |
 | entry, CPSR | 0x60408000, SVC with IRQ and FIQ masked | same |
-| MMU, caches | off (D-cache cleaned, L2 disabled) | off (stage2 never enables the D-cache, L2 or MMU) |
+| MMU, caches | off (D-cache cleaned, L2 disabled) | off (stage2 never enables the D-cache, L2 or MMU); L1 D-cache, TLBs, I-cache and branch predictor invalidated at entry (warm reset, [Fixed](#fixed)) |
 | ATAGs | CORE (flags 0, pagesize 0, rootdev 0) + CMDLINE + NONE; no MEM, INITRD, SERIAL, REVISION | same layout |
 | memory size | none: the kernel's `rk2928_fixup` reads it from the DDR controller | none |
 | initrd | cmdline `initrd=0x62000000,<size>`, size rounded up to 64 KiB (+256 KiB slack) | exact size |
@@ -215,8 +223,14 @@ word-aligned in DDR, no overlap with stage2 (0x60080000–0x600c0000), the log p
   Built with `-mno-unaligned-access`: with the MMU off every access is strongly ordered.
 - Memory: the ROM loads it at 0x60000000; it moves itself to 0x60080000 (image, bss and a 16 KB stack, all below 0x600c0000), so
   0x60000800 is free for the ATAGs, as with stock.
-- Order: power hold → caches off as stock → relocate → log → LED → CPU1 reset → I-cache on (only for CRC and LED timing) →
-  `IMEM+0x44` check → boot table → per blob: read, CRC32 → ATAGs → jump (LED flicker, LED off, remap, caches off).
+- Order: power hold → caches off as stock → L1 D-cache invalidate by set/way + TLBIALL/ICIALLU/BPIALL → relocate → log →
+  LED → CPU1 reset → I-cache on (only for CRC and LED timing) → `IMEM+0x44` check → boot table → per blob: read, CRC32 →
+  ATAGs → jump (LED flicker, LED off, remap, caches off).
+- L1 invalidate at entry (not in stock FlashBoot): after a warm reset (`GLB_SRST_FST`/`SND`, watchdog) from a kernel that
+  did not clean its caches, L1 keeps that kernel's dirty lines; the decompressor turns the D-cache on without invalidating
+  it and the stale lines corrupt the new kernel image ([Fixed](#fixed)). Invalidate only (never clean), once: stage2 never
+  sets SCTLR.C, and with the MMU off no line is allocated before the jump. The geometry comes from CCSIDR, the walk is the
+  one of Linux `v7_invalidate_l1`.
 
 ### LED codes (status LED GPIO2_B7, blue, active high)
 

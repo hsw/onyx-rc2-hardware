@@ -47,6 +47,13 @@ step "stage2 build x2"
 "$here/stage2/build.sh" "$A/stage2" | tee -a "$rep"
 "$here/stage2/build.sh" "$tmp/stage2" >/dev/null
 same stage2.bin "$A/stage2/stage2.bin" "$tmp/stage2/stage2.bin"
+# pinned bytes (README "Requirements"): stage2 with the L1 invalidate at entry; other toolchains give other bytes
+S2_PIN=b95cfad9fe6be2d1933d8281d0e5f4b8956d401a9354300b92a02eaa676260a5
+if grep -q 'clang version 23\.1\.3' "$A/stage2/toolchain.txt"; then
+  s2sha=$(python3 -I -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$A/stage2/stage2.bin")
+  if [ "$s2sha" = "$S2_PIN" ]; then echo "PASS stage2 = pinned ${S2_PIN:0:8}... (LLVM 23.1.3)" | tee -a "$rep"
+  else echo "FAIL stage2 $s2sha != pinned ${S2_PIN:0:8}..." | tee -a "$rep"; exit 1; fi
+else echo "note: toolchain is not LLVM 23.1.3: pinned-bytes check of stage2 skipped" | tee -a "$rep"; fi
 step "ramdisk-sd build x2"
 python3 -I "$here/ramdisk-sd/mkramdisk-sd.py" --out "$A/ramdisk-sd" "${RDIN[@]}" | tee -a "$rep"
 python3 -I "$here/ramdisk-sd/mkramdisk-sd.py" --out "$tmp/rd" "${RDIN[@]}" >/dev/null

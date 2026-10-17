@@ -536,7 +536,8 @@ What a warm reset does **not** clear, and what follows from it:
   invalidate). Observed: after a reset from mainline the second kernel took an exception right at the decompressor's jump
   into the kernel. With a first stage that invalidates the whole L1 D-cache by set/way (DCISW over the CCSIDR geometry,
   invalidate only) plus TLBIALL, ICIALLU and BPIALL at entry, SND and FST resets from mainline come back
-  [observation CONFIRMED-device; mechanism STRONG]. U-Boot's `enable_caches` invalidates L1 before it turns the MMU on.
+  [observation CONFIRMED-device; mechanism STRONG]. The sdboot stage2 ([`../bootrom/sdboot/`](../bootrom/sdboot/README.md))
+  does exactly this at entry. U-Boot's `enable_caches` invalidates L1 before it turns the MMU on.
 - **The GRF**, including the IMEM remap (`SOC_CON0` bit 12) [STRONG for SND: the vendor clears the remap before every reset,
   and every reset on the device came back only with it off; VERIFY for FST]. With the remap set, a core that restarts at
   address 0 lands in IMEM, not in the BootROM.
