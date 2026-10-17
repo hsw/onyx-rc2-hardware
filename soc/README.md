@@ -19,6 +19,10 @@ Sources, in order of weight:
    `drivers/phy/rockchip/phy-rockchip-inno-usb2.c`, `drivers/pmdomain/rockchip/pm-domains.c`.
 5. **DS** = the Rockchip datasheets `RK3026_datasheet_V1.1` and `RK302X_datasheet_V1.2` (pins, electrical data, feature
    list; no registers).
+6. **ML-RC2** = mainline Linux v7.1.13 with Mario Rugiero's RK3026 tree ([Oppen/linux](https://github.com/Oppen/linux), branch
+   `boox-c67ml`) plus a few RC2 patches ([`../mainline/README.md`](../mainline/README.md) §0), and a mainline-based U-Boot,
+   both booted on the RC2 from microSD on 2026-10-16/17. CPU1 start, warm resets, the watchdog, power-off and the USB OTG core
+   were exercised there.
 
 Confidence marks on this page:
 - **[CONFIRMED-device]**: seen on the RC2 (log, `/proc`, register readback);
@@ -48,9 +52,14 @@ Confidence marks on this page:
 - **GRF:** pinctrl is exactly the `rockchip,rk2928-pinctrl` layout. Different from RK3036: the USB status bits (shifted by one),
   the idle-request bits, the **I2C controller select in `GRF_SOC_CON1` bits 11–14**, and **`GRF_LVDS_CON0` bit 0, which routes
   the EBC data lines (SDDO0–7, SDCE0/1) to the LVDS pads** (§4).
-- **Reboot flags:** stock writes `GRF_OS_REG4` (0x1d8) with the same values as mainline `syscon-reboot-mode` (§4.2).
-- **CPU1:** there is no PMU. Stock remaps IMEM to address 0 and pulses the CPU1 reset; mainline `rockchip,rk3036-smp` does the
-  same on a Cortex-A9 (§4.3).
+- **Reboot flags:** stock writes `GRF_OS_REG4` (0x1d8) with the same values as mainline `syscon-reboot-mode`; the stock loader
+  acts on `0x5242C301` (Rockusb) and `0x5242C303` (recovery) and boots normally on most other values (§4.2).
+- **CPU1:** there is no PMU, and the core soft reset does not hold the core: **the assert write itself restarts CPU1 at
+  address 0**, the deassert does nothing. Address 0 is IMEM only while `GRF_SOC_CON0` bit 12 is set. Mainline
+  `rockchip,rk3036-smp` brings CPU1 up on this Cortex-A9 with two changes: a reset pulse once the trampoline is in place, and
+  the remap set only around that pulse. Hotplug works (§4.3).
+- **Warm resets:** `GLB_SRST_SND`, `GLB_SRST_FST` and a watchdog reset all restart through the BootROM (microSD first) and keep
+  the DDR contents. The Cortex-A9 keeps L1 cache lines across them, so a first-stage loader must invalidate L1 at entry (§4.5).
 - **Measured on the device:** APLL 912, DPLL 792 (DDR 396), **CPLL 640**, GPLL 768 MHz; `dclk_ebc` 160 MHz from CPLL; the keys,
   the cover sensor and I2C2 run with the internal pull disabled (external pull-ups, DTS `bias-disable`).
 
@@ -75,10 +84,10 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x10138000 | 16 KiB | L2C PL310 | boot log: `CACHE_ID 0x4100c0c9, AUX_CTRL 0x76030001, Cache size: 262144 B` | `arm,pl310-cache` (as `rk3xxx.dtsi`) | CONFIRMED-device |
 | 0x1013c000 | 256 B | SCU | 2 CPUs | `arm,cortex-a9-scu` | CONFIRMED-src + ML |
 | 0x1013c100 | 256 B | GIC CPU interface | | `arm,cortex-a9-gic`, second `reg` | CONFIRMED-src + ML |
-| 0x1013c200 | 1 KiB | global timer | | `arm,cortex-a9-global-timer`, PPI 11 | CONFIRMED-src + ML |
-| 0x1013c600 | 2.5 KiB | private timer + watchdog (TWD) | `LOC` in `/proc/interrupts` (Linux 29 = PPI 13) | `arm,cortex-a9-twd-timer`, PPI 13 | CONFIRMED-src + ML |
+| 0x1013c200 | 1 KiB | global timer | | `arm,cortex-a9-global-timer`, PPI 11, **edge rising** (§2.1) | CONFIRMED-src + ML; edge CONFIRMED-device |
+| 0x1013c600 | 2.5 KiB | private timer + watchdog (TWD) | `LOC` in `/proc/interrupts` (Linux 29 = PPI 13) | `arm,cortex-a9-twd-timer`, PPI 13, **edge rising** (§2.1) | CONFIRMED-src + ML; edge CONFIRMED-device |
 | 0x1013d000 | 4 KiB | GIC distributor | | `arm,cortex-a9-gic`, first `reg` | CONFIRMED-src + ML |
-| 0x10180000 | 256 KiB | USB OTG (DWC2) | `usb20_otg`, IRQ 42 | `snps,dwc2` + `rockchip,rk3066-usb` | CONFIRMED-device |
+| 0x10180000 | 256 KiB | USB OTG (DWC2) | `usb20_otg`, IRQ 42 | `snps,dwc2` + `rockchip,rk3066-usb`; FIFO RAM 972 words (§1.2) | CONFIRMED-device |
 | 0x101c0000 | 256 KiB | USB host, **also DWC2** (not EHCI/OHCI) | `usb20_host`, IRQ 43; the RTL8723BU Wi-Fi sits on it | `snps,dwc2`, host mode | CONFIRMED-device |
 | 0x10200000 | 16 KiB | crypto | — | — (EMAC on RK3036) | CONFIRMED-src |
 | 0x10214000 | 16 KiB | SDMMC0 (microSD) | `rk29_sdmmc.0` | `rockchip,rk2928-dw-mshc` | CONFIRMED-device |
@@ -97,7 +106,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x20034000 | 16 KiB | HDMI | — | **not in RK3026**: DS V1.2 "HDMI … only by RK3028A" | — |
 | 0x20044000 | 0x20 | TIMER0 | IRQ 60 `rk_timer0` (clockevent) | `rockchip,rk3036-timer`, `reg <0x20044000 0x20>` | CONFIRMED-device |
 | **0x20044020** | 0x20 | **TIMER1** | the stock clocksource (`Switching to clocksource rk_timer`); the timer resource in the Image holds this address | a second timer node, or leave it out | CONFIRMED-src (RY `mach-rk3026/rk_timer.c`: TIMER0 + 0x20); STRONG (disassembly) |
-| 0x2004c000 | 4 KiB | watchdog | not enabled | `snps,dw-wdt` | CONFIRMED-src |
+| 0x2004c000 | 4 KiB | watchdog | not enabled by stock. Armed by a mainline-based U-Boot and fed by Linux `dw_wdt`; its reset restarts through the BootROM (microSD first) and keeps DDR (§4.5) | `snps,dw-wdt`; without `snps,watchdog-tops` the driver prints `No valid TOPs array specified` and uses its default table | CONFIRMED-device (ML-RC2) |
 | 0x20050000 | 4 KiB | PWM, channel n at +0x10·n | PWM0 = frontlight | `rockchip,rk2928-pwm`, `reg <0x20050000 0x10>` | CONFIRMED-src; DS: 2 PWMs on RK3026 |
 | 0x20054000 / 0x20058000 / 0x2005c000 / 0x20070000 | 4 KiB | the old (rk29) I2C1/2/3/0 controllers | unused | — | CONFIRMED-src |
 | 0x20072000 | 4 KiB | I2C0 (rk30 controller) | `rk30_i2c.0`: ACT8931 0x5b, CW2015 0x62, HYM8563 0x51 | `rockchip,rk3066-i2c`-type with a GRF select (§4.1) | CONFIRMED-device |
@@ -182,6 +191,32 @@ fallback, `rockchip-nand-controller.c` `NFC_V6`) [STRONG]. It has its own bus-ma
 `DMA_DATA_BUF`/`DMA_OOB_BUF` registers) and does not use the PL330. The vendor module contains that path, but it is not
 executed on the RC2, which has eMMC and no raw NAND.
 
+### 1.2 USB OTG controller (DWC2)
+
+Read on the device from a mainline-based U-Boot and checked against mainline Linux `dwc2` on the same board (ML-RC2)
+[CONFIRMED-device unless marked]:
+
+- `GSNPSID` 0x4f54291a (core release 2.91a); `GHWCFG1..4` = 0x00006664, 0x22aa2450, 0x03cc00e8, 0xdbf04060.
+- `GHWCFG3` bits 31:16 = 0x3cc: **972 words of FIFO RAM** (Linux: "dedicated fifos, 972 entries in SPRAM"). Transfer-size
+  counter 19 bits, packet counter 10 bits (Linux `hw_params`: `max_transfer_size` 524287, `max_packet_count` 1023).
+  `GHWCFG4`: 6 IN endpoints with dedicated TX FIFOs.
+- FIFO layout: U-Boot's non-DM Rockchip gadget path ignores the DT and programs RX 512 + non-periodic TX 16 + 6 × 128 =
+  1296 words, more than the core has. A layout that fits and works in both U-Boot and Linux: `g-rx-fifo-size` 275,
+  `g-np-tx-fifo-size` 16, `g-tx-fifo-size` 256 128 128 64 64 32 = 963 words. TX FIFO 1 (bulk IN) = 256 words = two
+  high-speed packets, the same depth as Rockchip's own Rockusb code programs (RX 528, NP TX 16, IN FIFO 1 256, IN FIFO 2 16;
+  `board/rockchip/common/common/rockusb/` of the RK30 vendor U-Boot,
+  [radxa/u-boot-rockchip](https://github.com/radxa/u-boot-rockchip) branch `u-boot-rk3188`) [CONFIRMED-src].
+- Bulk IN DMA size: that Rockusb code never programs more than 64 KiB per IN transfer. In U-Boot, reads to the host went
+  wrong twice with a whole 128 KiB request (256 packets, within both counters) per IN DMA, and were right in every variant
+  of two later rounds with IN split into 16 KiB DMA chunks like OUT [STRONG; the exact cause of the bad reads is not pinned
+  down]. Keep IN transfers at 16 KiB.
+- AHB burst: the stock 3.0 kernel (`dwc_otg_cil.c`) and mainline `dwc2` (`dwc2_set_rk_params`) use INCR16 on this core
+  [CONFIRMED-src]; in U-Boot, reads were right with INCR16 and with INCR4.
+- Mainline Linux runs the OTG port as a peripheral: a configfs gadget with CDC ACM (console on `ttyGS0`) and mass storage
+  (the microSD exported to the host; about 18 MB/s read and 19 MB/s write from a Mac) works. U-Boot's CDC ACM console and
+  `ums` work too; after a `ums` run ended by an eject the ACM console stays deaf (the host keeps resetting the bus and
+  the device only enumerates at full speed) [CONFIRMED-device; cause VERIFY].
+
 ## 2. Interrupts
 
 ### 2.1 Numbering
@@ -190,7 +225,11 @@ executed on the RC2, which has eMMC and no raw NAND.
   (RY `mach-rk3026/common.c`, `gic_init`). **In a device tree: `GIC_SPI (n − 32)`.** For all 20 blocks shared with RK3036,
   `rk3036.dtsi` uses exactly n − 32 (SDMMC 46 → `GIC_SPI 14`, UART0 52 → 20, I2C0 56 → 24, TIMER0 60 → 28, GPIO0 68 → 36,
   OTG 42 → 10, bvalid 67 → 35, otg-id 83 → 51) [STRONG].
-- PPIs: the private timer is Linux 29 = PPI 13, the global timer PPI 11 (as in `rk3xxx.dtsi`).
+- PPIs: the private timer is Linux 29 = PPI 13, the global timer PPI 11 (as in `rk3xxx.dtsi`). Both are **rising edge**, with
+  read-only configuration bits in the distributor. A level-high description (copied from `rk3036.dtsi`, whose Cortex-A7 arch
+  timer is a different block) makes mainline print `GIC: PPI13 is secure or misconfigured` for every CPU that comes online;
+  `IRQ_TYPE_EDGE_RISING`, as `rk3xxx.dtsi` has it for the other Rockchip Cortex-A9 SoCs, removes the warning
+  [CONFIRMED-device, ML-RC2].
 - `NR_GIC_IRQS` = 128, so 96 SPIs (RY `mach-rk2928/include/mach/irqs.h`).
 
 ### 2.2 Table
@@ -351,8 +390,9 @@ Seen on the device:
 | EBC, IEP, LCDC0, CIF, crypto | present | absent | RK3026 only (RK3128 also has EBC clocks in mainline) |
 
 Verdict [STRONG]: a new `clk-rk3026.c` with its own `dt-bindings/clock/rk3026-cru.h`; PLL part after `clk-rk3128.c`, peripheral
-gates and resets after `clk-rk3036.c`. Restart: the vendor reboots through a sequence in SRAM (RY `reset.c`), not through
-`GLB_SRST_FST`; whether `GLB_SRST_FST` works and keeps `GRF_OS_REG4` is [VERIFY].
+gates and resets after `clk-rk3036.c`. Restart: the vendor reboots through a core reset run from SRAM (RY `reset.c`), not
+through the global resets. On the RC2 `GLB_SRST_SND` (0xeca8, the mainline restart handler) and `GLB_SRST_FST` (0xfdb9) both
+restart through the BootROM, once the IMEM remap is off and the first stage invalidates L1 (§4.5) [CONFIRMED-device, ML-RC2].
 
 ## 4. GRF (0x20008000)
 
@@ -365,7 +405,7 @@ Offsets from RY `mach-rk3026/include/mach/grf.h`. All control registers below ar
 |---|---|---|---|---|
 | 0x0a8 + 0x10·bank + 4·port | `GPIOnX_IOMUX` | 2 bits per pin, function 0…3 (§5). GPIO3 has only C (0xe0) and D (0xe4); ports 3A/3B have no mux register | §5 | `rockchip,rk2928-pinctrl`: mux at 0xa8, 4 banks × 32 — same |
 | 0x118 + 8·bank + 4·(pin/16) | `GPIOnL/H_PULL` | 1 bit per pin: **1 = pull disabled**, 0 = pull enabled in the pin's own direction (up or down; the datasheet gives GPIO2_B/C a pull-down) | §5.2 | `rk2928_calc_pull_reg_and_bit`; DTS: only `bias-disable` / `bias-pull-pin-default` |
-| 0x140 | `SOC_CON0` | **bit 12: IMEM mapped at address 0** (set by the loader for CPU1; the vendor clears it only before a reboot) | 0x1420: remap still on at run time | — (the loader sets it) |
+| 0x140 | `SOC_CON0` | **bit 12: IMEM mapped at address 0** (set by the loader for CPU1; the vendor clears it only before a reboot). Survives a warm reset (§4.5) | 0x1420: remap still on at run time | RK3026 mainline: set only around the CPU1 reset pulse (§4.3) |
 | 0x144 | `SOC_CON1` | **bits 11–14: I2C0…I2C3 served by the new rk30 controller** (mask bits 27–30) | 0x7802: all four set | `i2c-rk3x` writes `BIT(27+n) \| BIT(11+n)`, but no SoC uses offset 0x144: a `rockchip,rk3026-i2c` with `grf_offset = 0x144` is needed |
 | 0x148 | `SOC_CON2` | idle requests, bits 8–13 | 0x0082: no requests | `rk3036_pm_domains` uses bits 8–14 at the same offset |
 | 0x14c | `SOC_STATUS0` | idle acks 16–21, idle 22–27; **USB: bvalid bit 7, DP/DM 9:8, id bit 10** | 0x04BF with the cable: bvalid 1, id 1 (B-device), line state 0 | RK3036 table: bvalid bit 8, line state 10:9, id bit 11 — **shifted by one**, so the RK3036 data does not fit |
@@ -373,7 +413,7 @@ Offsets from RY `mach-rk3026/include/mach/grf.h`. All control registers below ar
 | 0x17c | `UOC0_CON0` | OTG PHY: bvalid IRQ enable/status bits 14/15, line-state bits 12/13 | 0x4002 | `rk3036_phy_cfgs` uses the same register and bits |
 | 0x190, 0x194 | `UOC1_CON0/1` | host PHY; 0x194 = suspend | 0x01D5 with Wi-Fi off | same offset (RK3036 suspend value 0x1d1) |
 | 0x1a0 | `UOC_CON` | OTG id interrupt: rise enable/status bits 0/1, fall bits 2/3 | 0xC2A5: both enabled, none pending | RK3036 has no id detection; the RK3128 table (`rk3128_phy_cfgs`) has exactly this layout |
-| 0x1c8–0x1e4 | `OS_REG0..7` | 4 and 5 = reboot flags (§4.2) | `OS_REG4` 0xC3524200 after a normal boot, `OS_REG5` 0; `OS_REG1` 0x6281 looks like the Rockchip DDR info word (DDR3, 1 rank, col 10, 8 banks, row 15, as the log says) [GUESS] | `syscon-reboot-mode` at offset 0x1d8 (as `rk3036.dtsi`) |
+| 0x1c8–0x1e4 | `OS_REG0..7` | 4 and 5 = reboot flags (§4.2) | `OS_REG4` 0xC3524200 after a normal boot, `OS_REG5` 0; `OS_REG1` **0x6281** = the DDR geometry word the vendor DDR init writes: DDR3, 1 channel, 1 rank, column 10, 8 banks, row 15, ×16 die [CONFIRMED-device: read after the stock DDR init; the open RK3026 DDR init in Mario Rugiero's U-Boot ([Oppen/u-boot](https://github.com/Oppen/u-boot), branch `bringup/rk3026-mainline`) writes the same word for this geometry, and the kernel log prints the same geometry] | `syscon-reboot-mode` at offset 0x1d8 (as `rk3036.dtsi`) |
 | 0x280 / 0x2a0 | `USBPHY0/1_CON0..7` | PHY tuning | PHY0: 0x861F, 0xE007, 0x8EA8, 0x0200, 0x5556, 0x5555, 0x0005, 0x68C0; PHY1: 0x8618, 0xE007, 0x82AA, 0x0200, 0x5556, 0x5555, 0x0005, 0x68C0 | `phy_tuning` of RK3036 is its own; take RK3026 values from the device. PHY0 CON2 = 0x8EA8 is the value of a line commented out in RY ("fix otg signal"); RY's PHY1 CON7 write (0x78000000) is not visible [VERIFY why] |
 | 0x300 | `CHIP_TAG` | nobody reads it | 0x292C | — |
 
@@ -406,30 +446,111 @@ Stock RC2 (`rk30_arch_reset` @0xc045c2a0) [CONFIRMED-dis]:
 
 - The stock loader rewrites the flag into the "kernel" form: boot logs show `flag: NORMAL (0xc3524200)` and
   `RECOVER (0xc3524203)`, and the register reads 0xC3524200 after a normal boot [CONFIRMED-device].
+
+What the stock loader (FlashBoot 2.32) does with `OS_REG4` at entry, read in its code [STRONG; 01 and 03 CONFIRMED-device,
+they are `adb reboot loader` and `adb reboot recovery`]. It reads and writes the register as one 32-bit word and writes back
+the "kernel" form 0xC35242xx (0xC3524200 for anything it does not know):
+
+| `OS_REG4` at loader entry | Loader does |
+|---|---|
+| 0x5242C301 | Rockusb |
+| 0x5242C302 (maskrom) | nothing, boots normally: this BootROM reads no flag, so there is no software path into MaskROM (the Rockusb "reset to maskrom" command also just reboots) |
+| 0x5242C303 | recovery |
+| 0x5242C304 | suppresses a recovery request |
+| 0x5242C306 / 0x5242C307 | recovery with `--wipe_data` / `--wipe_all` |
+| 0x1888AAFF | Rockusb. The loader writes this value itself before each write to the eMMC boot partitions, so an interrupted loader write comes back to Rockusb |
+| anything else (0, 0x5242C300, 0x5242C305, 08, 09) | normal boot |
+
 - Mainline `rk3036.dtsi` has `syscon-reboot-mode` at 0x1d8 with `BOOT_BL_DOWNLOAD` = 0x5242C301 and `BOOT_RECOVERY` = 0x5242C303:
-  the same values as stock. Differences: mainline `mode-normal` writes 0x5242C300 (stock writes 0); RK3036's `mode-bootloader`
-  is `BOOT_FASTBOOT` (+9), but the RC2 loader understands only LOADER and RECOVER, so use `mode-bootloader = <BOOT_BL_DOWNLOAD>`
-  [STRONG; what the loader does with +9 is VERIFY].
-- `OS_REG5` survives a warm reset.
+  the same values as stock. Differences: mainline `mode-normal` writes 0x5242C300 (stock writes 0) and RK3036's
+  `mode-bootloader` is `BOOT_FASTBOOT` (+9); both fall into the loader's "anything else" row and boot normally. Use
+  `mode-bootloader = <BOOT_BL_DOWNLOAD>` for Rockusb [STRONG].
+- `OS_REG5` survives a warm reset. Neither the BootROM [STRONG] nor the microSD stage2 of [`../bootrom/sdboot/`](../bootrom/sdboot/README.md)
+  reads `OS_REG4`, so on the microSD path the flags only matter to a later stage that reads them.
 
 ### 4.3 CPU1
 
-- **Stock:** the loader sets `GRF_SOC_CON0` bit 12 (IMEM at address 0) and holds CPU1 in reset (`CRU_SOFTRST_CON0 = 0x00100010`).
-  The kernel copies its secondary-start trampoline to IMEM+0 and "powers up" the CPU1 domain, which on RK3026 is only a pulse
-  of the CPU1 soft reset (RY `pmu.h`). Without the remap CPU1 would stay in the BootROM.
-- A custom loader that repeats both steps boots the stock kernel from microSD with both cores up (`CPU1: Booted secondary
-  processor`, `Brought up 2 CPUs`) [CONFIRMED-device].
-- **Mainline** (`arch/arm/mach-rockchip/platsmp.c`): `rockchip,rk3066-smp` looks for a PMU and does not start the core without one,
-  so it does not fit. **`rockchip,rk3036-smp`** sets `has_pmu = false`, enables the SCU on a Cortex-A9, copies the trampoline to the
-  `smp-sram` node at IMEM+0 and releases CPU1 through the `resets` of `cpu@1`. That is the stock scheme: `enable-method =
-  "rockchip,rk3036-smp"`, `resets = <&cru SRST_CORE1>` (bit 4, number 4 in a future `rk3026-cru.h`), `smp-sram@0` in IMEM
-  [STRONG]. The kernel does not set the IMEM remap; the loader must. The Cortex-A9 branch of this method has never run in
-  mainline (RK3036 is a Cortex-A7), so it needs a test on the device.
+**The core soft reset does not hold the core** [CONFIRMED-device, ML-RC2]. Writing the assert value of `SRST_CORE1`
+(`CRU_SOFTRST_CON0` bit 4, write 0x00100010) restarts CPU1 at address 0 at once; the bit then reads 1 and stays 1, and the
+deassert write (0x00100000) does nothing to the core. Shown with a diagnostic kernel that put a recording stub at address 0
+and then asserted only: the record appeared within microseconds of the assert write, the bit still read 1 100 ms later, and
+the deassert left the record unchanged. So CPU1 runs whatever sits at address 0 **at the moment of the assert write**.
+
+- Address 0 is the BootROM, or IMEM (0x10080000) while `GRF_SOC_CON0` bit 12 is set.
+- **A secondary core in the BootROM** [CONFIRMED-dis on the ROM, [`../bootrom/README.md`](../bootrom/README.md)]: every core
+  first writes 1 to IMEM+4; a core with MPIDR ≠ 0 then waits in a WFE loop until IMEM+4 == **0xDEADBEAF** and jumps to the
+  address in IMEM+8, with no cache, MMU or SCU setup. Every SEV from CPU0 (each `spin_unlock`) wakes it for one more check, so
+  if the remap is switched on while a core waits there, the next SEV resumes it in IMEM data.
+- **Stock:** the loader sets the remap, puts its own vector table at address 0 (it sends a secondary core back to the ROM
+  loop) and then asserts the CPU1 reset; it never deasserts it. The kernel copies its trampoline to IMEM+0 first and then
+  writes assert and deassert back to back (the "power on" of the CPU1 domain, RY `pmu.h`); hotplug "power off" only leaves
+  the core in a WFI loop. The reboot path clears the remap before any reset (§4.2).
+- A custom loader that repeats the loader's steps boots the stock kernel from microSD with both cores up (`CPU1: Booted
+  secondary processor`, `Brought up 2 CPUs`) [CONFIRMED-device].
+- **Mainline** (`arch/arm/mach-rockchip/platsmp.c`): `rockchip,rk3066-smp` needs a PMU and does not fit.
+  **`rockchip,rk3036-smp`** (`has_pmu = false`) enables the SCU, copies the trampoline to the `smp-sram` node at IMEM+0 and
+  controls CPU1 only through the `resets` of `cpu@1` (`SRST_CORE1` = CON0 bit 4, id 4 when `rk3026-cru.h` numbers resets as
+  16 · CON + bit). As is, it fails here: `rockchip_smp_prepare_cpus()` asserts the reset *before* it copies the trampoline,
+  so CPU1 restarts into stale IMEM, and `rockchip_boot_secondary()` only deasserts. A clean v7.1.13 kernel prints `CPU1:
+  failed to come online` [CONFIRMED-device]. What it needs [CONFIRMED-device with both]:
+  1. without a PMU, assert right before the deassert in the "on" path (the trampoline is in IMEM by then) and skip the
+     assert in the "off" path, which would restart a core that just went offline; no delay between the two writes;
+  2. own the remap: set `GRF_SOC_CON0` bit 12 only around that pulse and clear it again once the new core runs from DDR. A
+     remap left set for the whole uptime makes any later restart at address 0 land in the trampoline instead of the
+     BootROM (§4.5).
+
+  With both, 2 CPUs come up at boot (`smp: Brought up 1 node, 2 CPUs`), CPU1 hotplug (`echo 0` / `echo 1` to
+  `cpu1/online`, three cycles) works with the offline core parked in its WFI loop, and a kernel started by kexec brings
+  CPU1 up again [CONFIRMED-device].
+- `CORE1_DBG` (bit 9) and the other core resets were never touched. Any other writer of `SRST_CORE1` starts the core.
+- RK3036 (Cortex-A7, same method) cannot show this: a restarted core there waits in its BootROM for the mailbox.
 
 ### 4.4 Chip version
 
 Nobody reads `CHIP_TAG`. The vendor takes the SoC version from the eFuse (byte 24 or 5; RY `plat-rk/efuse.c`); every RC2 log
 prints `rk3026 soc version:4` [CONFIRMED-device].
+
+### 4.5 Warm resets
+
+Tested on the RC2 from mainline Linux and a mainline-based U-Boot started from microSD (ML-RC2). "Back" = the BootROM ran
+its normal order again and booted the microSD card [CONFIRMED-device]:
+
+| Reset | Write | Result |
+|---|---|---|
+| `GLB_SRST_SND` | CRU+0x104 = 0xeca8 (the mainline restart handler) | back; DDR kept |
+| `GLB_SRST_FST` | CRU+0x100 = 0xfdb9 | back; DDR kept |
+| core reset, the stock way | from IMEM: PLLs to slow mode, then `CRU_SOFTRST_CON0` = 0x801cffff (MCORE, CORE0, CORE1, L2C) | back; DDR kept |
+| watchdog | dw-wdt at 0x2004c000 expires (a halted or spinning kernel that nobody feeds) | back; DDR kept |
+| kexec | — | not a reset; the second kernel comes up with both CPUs |
+
+"DDR kept": a boot counter word near the top of RAM, the stage2 log page and the ramoops buffer survive. After a kernel
+panic and a watchdog reset, U-Boot's `pstore display` on the ramoops area (0x7ff40000, reserved in the DT) shows the whole
+panic log, and the next kernel's `/sys/fs/pstore` still holds it.
+
+What a warm reset does **not** clear, and what follows from it:
+
+- **L1 caches.** The Cortex-A9 does not invalidate its caches on reset; software must. The stock kernel cleans and disables
+  them before it resets, mainline's restart path does not, and a watchdog reset of a hung kernel cannot. A first stage that,
+  like stock FlashBoot, only invalidates the I-cache and the branch predictor and runs with the D-cache off leaves the dead
+  kernel's lines in L1 until the next kernel's decompressor turns the D-cache on (Linux `__armv7_mmu_cache_on` does not
+  invalidate). Observed: after a reset from mainline the second kernel took an exception right at the decompressor's jump
+  into the kernel. With a first stage that invalidates the whole L1 D-cache by set/way (DCISW over the CCSIDR geometry,
+  invalidate only) plus TLBIALL, ICIALLU and BPIALL at entry, SND and FST resets from mainline come back
+  [observation CONFIRMED-device; mechanism STRONG]. U-Boot's `enable_caches` invalidates L1 before it turns the MMU on.
+- **The GRF**, including the IMEM remap (`SOC_CON0` bit 12) [STRONG for SND: the vendor clears the remap before every reset,
+  and every reset on the device came back only with it off; VERIFY for FST]. With the remap set, a core that restarts at
+  address 0 lands in IMEM, not in the BootROM.
+- **IMEM.** The BootROM rewrites only IMEM+0 (delay factor), +4 (mailbox) and +0xc (secure flag) [CONFIRMED-dis]; anything
+  else a kernel left in IMEM 0x00–0x3f is still there in the next boot, right where a restarted CPU1 lands while the remap
+  is set. With a diagnostic kernel that kept the remap set and left data there, warm resets into itself died between
+  frames; clearing the remap and zeroing IMEM 0x00–0x3f before every reset, and setting the remap only around the CPU1
+  pulse, made every such reset come back with 2 CPUs [fix CONFIRMED-device; mechanism (CPU1 running loose in IMEM) STRONG].
+- **The power hold** (GPIO1_A2) stays high, so the board stays powered. A reset that never reaches the BootROM therefore
+  leaves the book "dead" (panel black, no USB, the power key ignored because nothing reads it) until the reset pinhole
+  [CONFIRMED-device for the symptom; STRONG for the explanation].
+
+A reset with the pinhole, with the card left in, booted the eMMC every time so far, while a reset from software boots the
+card [CONFIRMED-device; cause VERIFY, see [`../bootrom/sdboot/README.md`](../bootrom/sdboot/README.md) "Known failures"].
 
 ## 5. Pins
 
@@ -514,7 +635,10 @@ the stock FIQ debugger on UART2 is therefore of little use.
 ## 7. Still [VERIFY]
 
 - What lies at GRF 0xd8/0xdc (no `GPIO3A/B_IOMUX`) and whether writing there is safe.
-- Restart through `GLB_SRST_FST` instead of the vendor SRAM routine; whether `OS_REG4` survives it.
+- Whether `GLB_SRST_FST` keeps the GRF (`OS_REG4/5`, the IMEM remap) as SND does (§4.5); both global resets themselves work.
+- After a halt and a watchdog reset CPU1 once failed to come online in the next mainline boot; not reproduced in two
+  repeats.
+- Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; QoS offsets in the CPU AXI window.
