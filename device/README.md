@@ -1,6 +1,7 @@
 # Device facts: ONYX BOOX Robinson Crusoe 2 (MC_Kepler_R2)
 
-Captured from one RC2 running stock firmware 1.8.2 over adb (uid shell, no root) and in Rockusb loader mode, 2026-10-06.
+Captured from one RC2 running stock firmware 1.8.2 over adb (uid shell, no root) and in Rockusb loader mode, 2026-10-06; the
+eMMC boot partitions, the user area below `parameter` and the stock loader sections were added on 2026-10-17.
 Raw captures (excerpts, no serials or personal data) are in [`proc/`](proc/).
 
 ## Identity
@@ -37,7 +38,9 @@ Raw captures (excerpts, no serials or personal data) are in [`proc/`](proc/).
 | mtd8 | system | 0x422000 | 0x200000 | 1 GiB | 0x84400000 |
 | mtd9 | user | 0x622000 | to the end | 4415488 KiB ≈ 4.21 GiB | 0xC4400000 |
 
-Sectors 0x0–0x2000 (the first 4 MiB) hold the loader/IDB area and `parameter`; they are not exposed as an MTD partition.
+Sectors 0x0–0x2000 (the first 4 MiB) hold `parameter` (8 copies, see Rockusb below); they are not exposed as an MTD partition.
+These are loader LBAs: LBA 0 is eMMC user sector 0x2000. The loader itself lives in the eMMC hardware boot partitions, and
+the 4 MiB of the user area before LBA 0 are described [below](#emmc-user-area-below-parameter-sectors-00x1fff).
 The eMMC module adds a firmware offset of 0x2000 sectors to every MTD block address it passes to the eMMC
 ([below](#rk30xxnand_ko-and-the-emmc)).
 The partitions `parameter`, `uboot`, `charge`, `cust`, `custom` (listed in the public C67ML TWRP device tree,
@@ -95,8 +98,70 @@ input devices ([`getevent.txt`](proc/getevent.txt): the touchscreen reports X 0.
   `0x00130000` (runtime, the actual ramdisk size), and the loader adds `bootver=2016-04-12#2.32 firmware_ver=5.0.0`.
 - The first 4 MiB hold 8 copies of the `PARM` block every 512 KiB (0x0, 0x80000, …, 0x380000), the standard Rockchip parameter
   redundancy. PARM format: `PARM` + LE32 length + text + CRC32.
-- IDB (`rkflashtool i 0 0x40`): the data is RC4-encrypted (as expected for a Rockchip IDB/loader).
+- **`rkflashtool i` does not read the eMMC user area.** The loader's PBA read (Rockusb 0x04) maps PBA 0..0x3FF to the eMMC
+  hardware boot partition **boot1** and 0x400..0x7FF to **boot2**, only their first 512 KiB; any PBA ≥ 0x800 folds back
+  onto boot1. A 2 MiB `i 0 0x1000` dump is therefore boot1 + boot2 + boot1 + boot1, which looks like "four IDB copies at
+  0/1024/2048/3072" [CONFIRMED: loader code, and the eMMC user area below holds no such copies]. On this book **boot1 =
+  boot2**. Each copy: IDB header (init_offset 4, init_size 8, init_boot_size 232); the 8 init sectors are the DDR init
+  (FlashData) and the 224 boot sectors the loader (FlashBoot), RC4-encrypted per 512 bytes; sector 1 (plain) gives loader
+  date 2016-04-12, version 2.32. The 16 spare bytes per 528-byte sector are stale buffer contents.
+- The loader writes boot2 itself: at every Rockusb entry (and before its own restore or update writes) it compares the first
+  512 KiB of the current boot partition with boot2 and copies them over when they differ [STRONG, loader code]. With boot1 =
+  boot2 nothing is written. Anyone editing boot1 alone gets it mirrored to boot2 at the next Rockusb entry [DANGER].
+- `rkflashtool r/w` LBA 0 = eMMC user sector **0x2000**. The loader applies that offset only because user sector 0x40 starts
+  with the IDB magic (next section).
+- With a bootable microSD card inserted, `adb reboot loader` boots the card, not Rockusb: the reboot goes through the BootROM,
+  which tries the card first [CONFIRMED]. Take the card out first.
+- Idle in Rockusb for about 2 minutes (no command), or about 3.5 minutes without a host, the loader prints `power off` and
+  releases the power hold [STRONG, loader code]. A dump script must not pause in loader mode.
 - `misc` is all zeros on a normally booting device (empty BCB).
+
+## eMMC user area below `parameter` (sectors 0..0x1FFF)
+
+Dumped read-only on 2026-10-17 over the stock Rockusb, with read commands only, two identical reads [CONFIRMED]:
+
+| User sectors | What the loader uses it for | On this book |
+|---|---|---|
+| 0x0040–0x005F | IDB header; its magic makes LBA 0 = user 0x2000 | an IDB header with the same fields as boot1 and a different 32-sector payload: a stub for the offset logic, not a bootable copy [STRONG] |
+| 0x1800–0x19FF | panel waveform, 256 KiB, copied to `WAV_ADDR` 0x7ff00000 whenever the loader parses `parameter` | **all zero**, and so is the DRAM copy at 0x7ff00000 in loader mode. The waveform lives only in the boot ramdisk (`/ebc_waveform.bin`), which the stock kernel loads over that area |
+| 0x1F80 | `SYSD` boot configuration (boot media, `secureBootEn`, …) | near-empty: secure boot off |
+| 0x1F81 | `DRMK` key sector (DRM key, public key, secure-boot lock) | near-empty: no keys |
+| 0x1F82–0x1F90 | vendor sectors (serial, MAC and the like if a factory tool wrote any) | all zero |
+| everything else | not used by the loader | all zero |
+
+Read paths that reach this area over stock Rockusb, all read-only [STRONG from the loader code; used for the dump]: cmd 0x14
+(LBA read) with LBA `0xFFFFE000 + s` → user sector s (s < 0x1F00); cmd 0x21 → user 0x1800 + byte offset; cmd 0x14 at
+`0xFFFFFF00 + k` → user 0x1F82 + k; cmd 0x17 → DRAM. The boot partitions beyond 512 KiB and EXT_CSD are not reachable over
+Rockusb. The stock kernel's `rk30xxnand_ko` reads the same `SYSD`/`DRMK`/vendor sectors and exposes them as
+`/dev/rknand_sys_storage`; nothing else in the stock kernel reads below user 0x2000.
+
+## Stock loader (FlashBoot 2.32)
+
+Read in its code [STRONG unless marked]; the kernel hand-off itself is in [`../bootrom/sdboot/README.md`](../bootrom/sdboot/README.md)
+("Hand-off").
+- It never touches the panel, EBC, LCDC, I2C, PMIC, PWM, watchdog or eFuse: no boot logo, no charge screen, no battery or
+  power-on-reason logic. There is no loader-side EBC or TPS65185 sequence to copy for a new kernel.
+- Reboot flags in `GRF_OS_REG4`: [`../soc/README.md`](../soc/README.md) §4.2.
+- Its soft reset (`rkflashtool b`, and after its own restores) does not use a CRU global reset: IRQs off, USB soft disconnect,
+  eMMC back to boot1 access with a pre-idle CMD0, caches off, PLLs to slow mode, IMEM remap cleared, then a jump to the
+  BootROM at address 0. The ROM runs its media order again, so an inserted microSD card boots first.
+- Other writes of its own: EXT_CSD `WR_REL_SET` = 0x1f once, `PARTITION_CONFIG` on every access switch, `SYSD`/`DRMK` when
+  their tags are missing, and a restore of `kernel`/`boot`/`recovery` from the `backup` RKAF when loading one fails
+  ("Begin recover...").
+- **What it checks on an ANDROID! image** (loaded from `recovery` on a recovery request) — useful for chainloading
+  another loader:
+  - the page size is fixed at **16 KiB** (the header's `page_size` is only hashed): kernel from partition offset 16 KiB,
+    ramdisk after the kernel rounded up to 16 KiB;
+  - the kernel goes to the header's **`kernel_addr`**, with no address or size check and no look at the bytes, so any raw
+    binary linked there runs (0x60408000, the stock kernel address, is clear of the loader's own memory);
+  - the Rockchip **SHA1 `id`** must match (SHA1 over kernel, kernel_size, ramdisk, ramdisk_size, second, second_size,
+    tags_addr, page_size, unused, name, cmdline; `id[5..7]` = 0). A mismatch makes the loader **restore `recovery` from
+    `backup`** and boot stock recovery [DANGER, recoverable];
+  - `second_size` must be 0 (the second stage is hashed from address 0);
+  - no signature check while `SYSD` says secure boot is off, as on this book;
+  - the cmdline and ATAGs come from `parameter` (the header cmdline is not passed; the `initrd=` size is rewritten from
+    `ramdisk_size`); entry as for the normal kernel: r0 0, r1 3066, r2 0x60000800, MMU and caches off, remap set, CPU1 in
+    reset, power hold high.
 
 ## Image formats
 
