@@ -311,6 +311,9 @@ version` (the value stays 0). For `"3"` it also clears an SRAM flag at 0xfef01ce
 version [%d]`. `onyx_get_pcb_version()` prints `[ONYX] pcb version is [%s]` from `onyx_pcb_version_str[]` on *every* call, which is
 why the boot logs repeat it.
 
+These are the kernel's names, not the silkscreen: boards that report `pcb_ver=2` carry the silkscreen
+`BOOX_KEPLER_RK3026_V1.3` ([`../device/README.md`](../device/README.md#board-revision-and-chip-markings)) [STRONG].
+
 | Behaviour | 0 V1.4/V1.6 | 1 V1.7 | **2 V1.73 (this RC2)** | 3 V1.76 |
 |---|---|---|---|---|
 | `is_onyx_pcb_v17x` | no | no | **yes** | yes |

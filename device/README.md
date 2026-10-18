@@ -15,7 +15,7 @@ Raw captures (excerpts, no serials or personal data) are in [`proc/`](proc/).
 | Android | 4.2.2, API 17, user build, ro.secure=1, ro.debuggable=0 |
 | Kernel | Linux 3.0.36+ #1 SMP PREEMPT Tue Nov 7 21:44:55 CST 2017, gcc 4.6.x-google ([`proc_version.txt`](proc/proc_version.txt)) |
 | Loader (from cmdline) | bootver=2016-04-12#2.32, firmware_ver=5.0.0 |
-| PCB | pcb_ver=2 (= V1.73, see [`../board/README.md`](../board/README.md) §5) |
+| PCB | pcb_ver=2 (= V1.73, see [`../board/README.md`](../board/README.md) §5); silkscreen `BOOX_KEPLER_RK3026_V1.3` on boards with that value ([below](#board-revision-and-chip-markings)) |
 | Storage | onyx_emmc=1 (eMMC through the rk29xxnand / `rk30xxnand_ko` MTD layer; how the module drives the eMMC: [below](#rk30xxnand_ko-and-the-emmc)) |
 | waveform_addr | 0x7ff00000 (from cmdline) |
 | initrd | 0x62000000, size 0x00130000 (runtime) |
@@ -77,6 +77,42 @@ input devices ([`getevent.txt`](proc/getevent.txt): the touchscreen reports X 0.
 ([`proc_interrupts.txt`](proc/proc_interrupts.txt)), MMIO ([`proc_iomem.txt`](proc/proc_iomem.txt)), char devices
 ([`proc_devices.txt`](proc/proc_devices.txt)), modules ([`proc_modules.txt`](proc/proc_modules.txt)) and power supplies
 ([`power_supply.txt`](proc/power_supply.txt): `rk-ac`, `rk-bat`, `rk-usb`) are in [`proc/`](proc/).
+
+## Board revision and chip markings
+
+This RC2 has not been opened. The marks below are read from public photos of the same "Kepler" RK3026 board family; the
+photos are not copied here, follow the links:
+
+- **iXBT Live**, an RC2 teardown (2017-12-30):
+  <https://www.ixbt.com/live/mobilepc/nepotoplyaemyy-robinson-crusoe---tehnologiya-vodozaschity-hzo-na-primere-elektronnoy-knigi-onyx-boox.html>.
+  The text says the RC2 uses the Kepler board, coated with parylene; silkscreen `…KEPLER_RK3026_V1.3`; the chip marks
+  cannot be read through the coating.
+- **FCC ID XR3-KEPLER3026** (ONYX International Inc., grant 2017-06-24, models Kepler, Monte Cristo 2, Kepler Plus/Pro/Lite;
+  the RC2 is not listed): internal photos at <https://fccid.io/XR3-KEPLER3026>. Bare board, silkscreen
+  `…KEPLER_RK3026_V1.4`. Block diagram and schematics are confidential in the filing.
+- **4PDA**, ONYX C67ML topic, post #3489 (2021-12-09), a Monte Cristo 3:
+  <https://4pda.to/forum/index.php?showtopic=678336&st=3480>. Silkscreen `BOOX_KEPLER_RK3026_V1.3`; the post quotes the
+  unit's `pcb_ver=2`.
+
+| Part | FCC Kepler, V1.4 | 4PDA Monte Cristo 3, V1.3 |
+|---|---|---|
+| SoC | `RK3026` `SGAK3G802 1529` (2015 week 29) | `RK3026` `SGAK3W313 1720` (2017 week 20; the 7 is faint) |
+| DRAM | Samsung `K4B4G1646E-BYK0`: DDR3L, 4 Gb ×16, one chip = 512 MiB | not read |
+| Storage | SanDisk 8 GB raw NAND, TSOP (`…GAMA-008G`) | Samsung eMMC `KLM8G1GEME` (8 GB, `SEC 649` = 2016 week 49) |
+| Wi-Fi / BT | Realtek `RTL8723BU` | RTL8723BU (Realtek logo, same place) |
+| Clock | 24 MHz crystal `24.000` `SJK` | — |
+| PMICs | a ~40-pin QFN among the inductors (the ACT8931 by position) and a 48-pin QFN with a boost inductor and diodes (the TPS65185 by position): no readable mark | the same two parts, no readable mark |
+
+On the iXBT RC2 board the storage chip is a smaller BGA in a footprint that also takes the TSOP NAND, i.e. an eMMC, as on
+this unit. Marks in the table are read from the photos [CONFIRMED-photo]; part identities by position are [STRONG] at best.
+
+- **Silkscreen vs `pcb_ver`.** The Monte Cristo 3 board with silkscreen V1.3 reports `pcb_ver=2`, the value this RC2's
+  loader passes and the stock kernel calls "V1.73" ([`../board/README.md`](../board/README.md) §5); the iXBT RC2 board is a
+  V1.3 too. So the kernel's names (V1.4/V1.6, V1.7, V1.73, V1.76) and the silkscreen revision are two numbering schemes,
+  and `pcb_ver=2` goes with silkscreen V1.3 [STRONG]. The FCC V1.4 board looks like the older design (2015 SoC, filed
+  2017-06) despite the higher number [STRONG]; its `pcb_ver` is unknown.
+- The "Samsung" that `rkflashtool` reports for this unit's eMMC is plausible: the V1.3 board above carries a Samsung eMMC.
+  This unit's own part is unread.
 
 ## Stock userspace notes
 
