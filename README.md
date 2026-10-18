@@ -1,9 +1,10 @@
 # onyx-rc2-hardware
 
-Hardware notes for the **ONYX BOOX Robinson Crusoe 2** (internal name `MC_Kepler_R2`, Rockchip RK3026, pcb **V1.73**): pins,
-regulators, the E-Ink PMIC and VCOM, panel timings, keys, frontlight, power management and device facts, read out of the stock
-vendor kernel and checked on one device. Written with a mainline device tree in mind; the RC2's sibling C67ML is probably another
-pcb revision of the same board.
+Hardware notes for the **ONYX BOOX Robinson Crusoe 2** (internal name `MC_Kepler_R2`, Rockchip RK3026, pcb **V1.73** in the
+kernel's naming; such boards carry the silkscreen `BOOX_KEPLER_RK3026_V1.3`): pins, regulators, the E-Ink PMIC and VCOM,
+panel timings, keys, frontlight, power management and device facts, read out of the stock vendor kernel and checked on one
+device. Written with a mainline device tree in mind; the RC2's sibling C67ML is probably another pcb revision of the same
+board.
 
 Related:
 - [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc): the stock EBC (E-Ink controller) driver, described: `/dev/ebc` ABI, update
@@ -17,23 +18,23 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 
 | Part | What | Where documented |
 |---|---|---|
-| SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3), PL310 L2 256 KiB. The stock DVFS table has one point: **912 MHz at 1.40 V**. PLLs on the running device: APLL 912, DPLL 792, CPLL 640, GPLL 768 MHz | [`soc/README.md`](soc/README.md) (MMIO, IRQs, CRU, GRF, pins), [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
-| RAM | 512 MiB DDR3, **one rank** (ACT8931 DCDC2 1.35 V), DDR at 396 MHz under the stock kernel (the loader leaves 300); a mainline SPL with the stock 396 MHz set boots and passes memory tests | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3, [`soc/README.md`](soc/README.md) §6, §8 (the stock DDR init), §8.1 (the 396 MHz set) |
+| SoC | Rockchip RK3026, 2 × Cortex-A9 (NEON, VFPv3), PL310 L2 256 KiB. The stock DVFS table has one point: **912 MHz at 1.40 V**, the datasheet's absolute maximum for the CPU supply. PLLs on the running device: APLL 912, DPLL 792, CPLL 640, GPLL 768 MHz; CPU and peripheral buses 192/96/48 MHz on GPLL. Global and watchdog resets clear the GPIO1 bank with the power hold: on battery they switch the book off | [`soc/README.md`](soc/README.md) (MMIO, IRQs, CRU, GRF, pins; clocks and voltage against the datasheet §3.5, resets §4.5), [`kernel/linux-rockchip-3.0-vs-stock.md`](kernel/linux-rockchip-3.0-vs-stock.md) §1 |
+| RAM | 512 MiB DDR3L, **one rank** (ACT8931 DCDC2 1.35 V), DDR at 396 MHz under the stock kernel (the loader leaves 300), CL6/CWL5, timings = the vendor `ddr.c` at 396 MHz; a mainline SPL with the stock 396 MHz set boots and passes memory tests; Samsung K4B4G1646E-BYK0 on the Kepler board photographed for the FCC | [`device/README.md`](device/README.md), [`power/README.md`](power/README.md) §4.3, [`soc/README.md`](soc/README.md) §6, §8 (the stock DDR init), §8.1 (the 396 MHz set), §8.2 (the DRAM part) |
 | Panel | 6", **1448×1072**, 122 × 91 mm. The ramdisk waveform says **ED060KD1C2**, the panel's own SPI flash says **ED060KD1U7** | below; [`panel/README.md`](panel/README.md) (timings against Kindle's, supplies, TPS65185 sequence, VCOM); [onyx-rc2-waveform](https://github.com/hsw/onyx-rc2-waveform) |
 | GPU | ARM **Mali-400 MP2**, driver r3p2-01rel0; OpenGL ES 1.1 and 2.0 (GLSL ES 1.00), EGL 1.4, no ES 3; max texture 4096, no fragment highp | [`gpu/README.md`](gpu/README.md) (EGL configs, extensions, limits, entry points, checks, GPU memory, Chromium 83 workarounds) |
 | BootROM | 16 KB mask ROM: boots **microSD first** (SD → NAND → SPI → eMMC → USB), falls through on a bad card, never writes storage; software and watchdog resets run it again with DDR kept. The stock kernel boots from a microSD card with the eMMC untouched | [`bootrom/README.md`](bootrom/README.md), [`bootrom/sdboot/`](bootrom/sdboot/README.md) |
 | Panel SPI flash | Macronix MX25U, 512 KiB, on SPI0: panel passport, VCOM, the panel's own waveform (R177) | [`panel-flash/README.md`](panel-flash/README.md) |
-| E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 (`GIC_SPI 49`), `dclk_ebc` 160 MHz from CPLL | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) |
-| System PMIC | Active-Semi **ACT8931** @ i2c0 0x5b, no IRQ. VCCIO 3.4 V, LDOs 3.1 V (the stock kernel reports 3.3 V / 3.0 V: its voltage table is off by one) | [`pmic/README.md`](pmic/README.md) §1, [`board/README.md`](board/README.md) §2 |
+| E-Ink controller | SoC EBC, reg 0x10114000–0x10117fff, IRQ 81 (`GIC_SPI 49`), `dclk_ebc` 160 MHz from CPLL; its AHB clock `hclk_disp_pre` must stay well above that (132 MHz: garbage under DRAM load; 213 and 256 MHz: clean) | [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc), [`soc/README.md`](soc/README.md) §3.6 |
+| System PMIC | Active-Semi **ACT8931** (most likely ACT8931AQJ633) @ i2c0 0x5b; nIRQ reaches no readable GPIO. VCCIO 3.4 V, LDOs 3.1 V (the stock kernel reports 3.3 V / 3.0 V: its voltage table is off by one); ON bits edge-triggered; registers survive reboots | [`pmic/README.md`](pmic/README.md) §1 (behaviour §1.7), [`board/README.md`](board/README.md) §2 |
 | E-Ink PMIC | TI **TPS65185** @ i2c2 0x68 (`TPS65185r1p2`) | below; [`pmic/README.md`](pmic/README.md) §2 |
 | Touch | Cypress **cyttsp4** (TrueTouch Gen4) @ i2c2 0x24; a Goodix driver @ i2c2 0x5d is registered as an alternative and is absent | [`board/README.md`](board/README.md) §3 |
 | Wi-Fi / BT | Realtek **RTL8723BU** on USB (`0bda:b720`), one power GPIO for both | [`board/README.md`](board/README.md) §4 |
 | Storage | eMMC, Samsung, 7456 MB, used through Rockchip's MTD layer (`rk29xxnand`, `onyx_emmc=1`); the loader sits in the hardware boot partitions (boot1 = boot2), the user area before `parameter` is near-empty (no keys, no waveform) | [`device/README.md`](device/README.md) |
-| microSD | MMC0, supply ACT8931 LDO3, card-detect GPIO2_A3 | [`board/README.md`](board/README.md) §3 |
+| microSD | MMC0, supply ACT8931 LDO3, card-detect GPIO2_A3; RK2928-type controller, no internal divide-by-two of the card clock | [`board/README.md`](board/README.md) §3, [`soc/README.md`](soc/README.md) §3.7 |
 | Keys | power, page up, page down, back on GPIOs; two ADC keys in the table (`ok`, `menu`), probably not fitted | below |
 | Frontlight | PWM0 (GPIO0_D2), active high, no enable GPIO | below |
 | Battery | Li-ion, **CW2015** fuel gauge @ i2c0 0x62; USB-only charging (the ACT8931's own charger) | [`board/README.md`](board/README.md) §3, [`power/README.md`](power/README.md) §3, [`pmic/README.md`](pmic/README.md) |
-| Mainline Linux | nothing for RK3026 in v7.2. Mario Rugiero's RK3026 kernel ([Oppen/linux](https://github.com/Oppen/linux) `boox-c67ml`), rebased onto v7.1.13 with twelve RC2 patches, boots on the RC2 from microSD: 2 CPUs, USB console and mass storage, watchdog, reboot, power-off. E-Ink garbage under DRAM load traced to the EBC's AHB fetch clock (`hclk_disp_pre` 132 MHz; stock 256) | [`mainline/README.md`](mainline/README.md) |
+| Mainline Linux | nothing for RK3026 in v7.2. Mario Rugiero's RK3026 kernel ([Oppen/linux](https://github.com/Oppen/linux) `boox-c67ml`), rebased onto v7.1.13 with twelve RC2 patches, boots on the RC2 from microSD: 2 CPUs, USB console and mass storage, watchdog, reboot, power-off. E-Ink garbage under DRAM load traced to the EBC's AHB fetch clock (`hclk_disp_pre` 132 MHz; stock 256 or 320) | [`mainline/README.md`](mainline/README.md) |
 | RTC | HYM8563 @ i2c0 0x51, IRQ GPIO1_B3 | [`board/README.md`](board/README.md) §3 |
 | Other | vibration motor (GPIO0_A2), status LED (GPIO2_B7), magnet (Hall) sensor that acts as POWER (GPIO1_B0), SoC audio codec without speaker or jack on V1.73 | [`board/README.md`](board/README.md) §6, §8 |
 
@@ -217,9 +218,9 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`bootrom/sdboot/`](bootrom/sdboot/README.md) | boot the stock kernel from a microSD card: bare-metal stage2 that reads through the ROM's SD routine, the stock loader hand-off, card image builder, Unicorn tests on the ROM; tested on the RC2 |
 | [`panel-flash/README.md`](panel-flash/README.md), [`panel-flash/tools/`](panel-flash/tools/) | the panel SPI flash: chip, E Ink's generic layout (the same in the Kindle Paperwhite 3), passport encoding, what the stock kernel reads, R177 vs R110, read tools |
 | [`panel/README.md`](panel/README.md) | panel timings against the Kindle Paperwhite 3 mode (83.64 vs 85 Hz), E Ink mode times, logic level, VGH 25 V from the waveform, the TPS65185 sequence decoded with TI's datasheet, VCOM (Kindle vs stock), DTS notes |
-| [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, the eMMC boot partitions and the user area below `parameter`, the stock loader (what it touches, its reset, what it checks on an ANDROID! image), image formats, ramdisk, raw `/proc` and sysfs excerpts |
-| [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, USB OTG (DWC2) parameters, IMEM (address-0 remap, usage by offset), interrupts (`GIC_SPI n−32`), NoC QoS ports, CRU (PLLs measured, stock bus clocks, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1 start, warm resets, pin mux and pulls, datasheet contradictions resolved, the stock DDR init and the stock kernel's 396 MHz set |
-| [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, the TPS65185 sequence and PG, DTS consequences |
+| [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, board revision and chip markings from public photos, partition map, Rockusb, the eMMC boot partitions and the user area below `parameter`, the stock loader (what it touches, its reset, what it checks on an ANDROID! image), image formats, ramdisk, raw `/proc` and sysfs excerpts |
+| [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, USB OTG (DWC2) parameters, IMEM (address-0 remap, usage by offset), interrupts (`GIC_SPI n−32`), NoC QoS ports, CRU (PLLs measured, datasheet limits, stock bus clocks, the stock clock tree and CPU voltage against the datasheet, L2 settings, the EBC fetch clock, the MMC clock, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1 start, warm resets and what each reset clears, pin mux and pulls, datasheet contradictions resolved, the stock DDR init and the stock kernel's 396 MHz set, the DRAM part |
+| [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, ACT8931 behaviour (edge-triggered ON, clear-on-read status, registers kept across reboots, nIRQ, part), the TPS65185 sequence and PG, DTS consequences |
 | [`mainline/README.md`](mainline/README.md) | an out-of-tree RK3026 kernel booted on the RC2 (what works, the RC2 patches, DDR 396, the EBC AHB fetch clock under memory load); mainline Linux v7.2 status per block and per board chip: what exists, what is missing, a sensible order |
 | [`gpu/README.md`](gpu/README.md), [`gpu/probe/`](gpu/probe/) | Mali-400 MP2 EGL / OpenGL ES 1.1 and 2.0 measured on the device: configs, extensions, limits, precision, entry points, checks, GPU memory, Chromium 83 workarounds; the probe source |
 
