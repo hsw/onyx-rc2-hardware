@@ -60,6 +60,8 @@ Confidence marks on this page:
   the remap set only around that pulse. Hotplug works (§4.3).
 - **Warm resets:** `GLB_SRST_SND`, `GLB_SRST_FST` and a watchdog reset all restart through the BootROM (microSD first) and keep
   the DDR contents. The Cortex-A9 keeps L1 cache lines across them, so a first-stage loader must invalidate L1 at entry (§4.5).
+  Both CRU global resets also reset the GPIO1 block and so drop the ACT8931 power hold (GPIO1_A2): on battery they switch
+  the book off. A cores-only SOFTRST_CON0 reset keeps GPIO1 and restarts it on battery [CONFIRMED-device].
 - **Measured on the device:** APLL 912, DPLL 792 (DDR 396), **CPLL 640**, GPLL 768 MHz; `dclk_ebc` 160 MHz from CPLL; the keys,
   the cover sensor and I2C2 run with the internal pull disabled (external pull-ups, DTS `bias-disable`).
 
