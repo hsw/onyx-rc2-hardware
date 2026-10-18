@@ -9,7 +9,8 @@ Sources, in order of weight:
 1. **The RC2 itself**: `/proc/iomem`, `/proc/interrupts`, boot logs ([`../device/proc/`](../device/proc/)), and a read-only
    register dump taken on 2026-10-11 on the running system: CRU, GRF, GPIO0–3 and EBC read as 32-bit MMIO words with `devmem`,
    nothing written. State at dump time: the stock 3.0.36+ kernel (with two small fixes in its EBC driver), Android, display idle after the last update, USB cable attached,
-   Wi-Fi off, no suspend since boot.
+   Wi-Fi off, no suspend since boot. A second read-only dump on 2026-10-18 (DDR controller, DDR PHY, NoC, the whole CRU, the
+   CPU QoS ports) comes from the same stock kernel booted from microSD (no Android, root shell), plus its `/proc/clocks`.
 2. **The stock RC2 kernel Image** (disassembly; addresses refer to the 2017-11-07 kernel, as in the rest of this repository).
 3. **RY** = the public vendor 3.0 tree [rychly/rk3026-linux-sources](https://github.com/rychly/rk3026-linux-sources):
    `arch/arm/mach-rk3026/include/mach/{cru,grf,iomux,irqs}.h`, `mach-rk2928/include/mach/io.h`, `mach-rk3026/clock_data.c`,
@@ -82,7 +83,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x1010e000 | 8 KiB | LCDC0 | `rk30-lcdc` | an RK2928-generation LCDC, not a VOP; the RC2 has no LCD | CONFIRMED-device |
 | 0x10110000 | 8 KiB | LCDC1 | — (the EBC driver enables `aclk_lcdc1` and `pd_lcdc1`, §3.3) | — | CONFIRMED-src |
 | **0x10114000** | 16 KiB | **EBC** (E-Ink controller) | `ebc reg` / `rk29-ebc` 10114000–10117fff | none ([onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc)) | CONFIRMED-device |
-| 0x10128000 | 32 KiB | CPU AXI bus / QoS | — | RK3036 has `rockchip,rk3036-qos` at 0x1012d000…; RK3026 offsets unknown | CONFIRMED-src; QoS [VERIFY] |
+| 0x10128000 | 32 KiB | CPU AXI bus (NoC): memory scheduler at +0, QoS ports at +0x2000…+0x7280 (§1.4) | — | RK3036 has `rockchip,rk3036-qos` at 0x1012d000…; the RK3026 ports differ (§1.4) | CONFIRMED-src (RY); ports read on the device |
 | 0x10138000 | 16 KiB | L2C PL310 | boot log: `CACHE_ID 0x4100c0c9, AUX_CTRL 0x76030001, Cache size: 262144 B` | `arm,pl310-cache` (as `rk3xxx.dtsi`) | CONFIRMED-device |
 | 0x1013c000 | 256 B | SCU | 2 CPUs | `arm,cortex-a9-scu` | CONFIRMED-src + ML |
 | 0x1013c100 | 256 B | GIC CPU interface | | `arm,cortex-a9-gic`, second `reg` | CONFIRMED-src + ML |
@@ -270,6 +271,36 @@ A core parked in the ROM wait loop wakes on every SEV; once the remap is set it 
 exactly there: it asserts the CPU1 reset while address 0 is still the ROM and sets the remap last, so CPU1 runs loose in
 IMEM from the kernel's first SEV until the kernel restarts it (harmless so far).
 
+### 1.4 NoC QoS ports (0x10128000)
+
+From RY `arch/arm/mach-rk3026/include/mach/cpu_axi.h` (port bases) and `arch/arm/plat-rk/include/plat/cpu_axi.h` (layout)
+[CONFIRMED-src]; reads on the device as marked. Each port has PRIORITY at +0x08, MODE at +0x0c (0 none, 1 fixed, 2
+limiter, 3 regulator), BANDWIDTH at +0x10 and SATURATION at +0x14; PRIORITY = `(h & 3) << 2 | (l & 3)`. These are **not**
+the RK2928 offsets (0x10128088/188/388 decode nothing on the RK3026: a read there is an external abort [STRONG]).
+
+| PRIORITY register | Master | Vendor kernel writes | Mainline kernel reads (reset or loader value) |
+|---|---|---|---|
+| 0x1012a008 | CPU0 | 0 | 0 |
+| 0x1012a088 | CPU1 write | 0 | 0 |
+| 0x1012a108 | CPU1 read | 0 | 0 |
+| 0x1012c008 | peripherals | 0 | 0x4 (mode 3) |
+| 0x1012d008 | GPU | 0x9 (2, 1) | 0xD |
+| 0x1012e008 | VPU | — | 0x9 |
+| 0x1012f008 | LCDC1 | 0xF (3, 3) | 0xE |
+| 0x1012f088 | EBC | — | 0x8 |
+| 0x1012f108 | IEP | — | — |
+| 0x1012f188 | LCDC0 | 0xF (3, 3) | 0xE (mode 3) |
+| 0x1012f208 | CIF0 | — | 0x8 |
+| 0x1012f288 | RGA | — | 0x8 |
+| 0x10128014 | memory scheduler ReadLatency | 0x3f | 0x3F |
+
+- The vendor writes are the whole of `cpu_axi_init()` in RY `mach-rk3026/common.c:22-34`, run once at boot; the EBC's own
+  port is never set. The stock kernel's CPU ports read 0 [CONFIRMED-device]. No other arbitration knob per master was
+  found in the uPCTL or the GRF registers of RY [STRONG].
+- **Reading 0x1012f008 on the stock kernel hangs the SoC** [CONFIRMED-device]: `devmem 0x1012f008` never returns and the
+  system stops answering. Under mainline the same block reads fine. Most likely the display-side NIU or its power domain is
+  clocked off at that moment on stock [VERIFY]; read the 0x1012f000 block only with the display path's clocks on.
+
 ## 2. Interrupts
 
 ### 2.1 Numbering
@@ -395,6 +426,13 @@ mux/divider, or check with one write first [VERIFY].
   per update [CONFIRMED-device]. Side effects on the other CPLL children: `hclk_disp_pre` 320 MHz (asked 300), I2S 12.164 MHz
   (asked 11.2896; there is no speaker on V1.73).
 - The loader (FlashData) leaves APLL 600 MHz, GPLL 132 MHz and DDR 300 MHz; under the stock kernel DDR runs at 396 MHz.
+- **Bus clocks under the stock kernel** (`/proc/clocks`, stock kernel booted from microSD, 2026-10-18) [CONFIRMED-device]:
+  `aclk_periph` 192, `hclk_periph` 96, `pclk_periph` 48 MHz; `aclk_cpu_pre` 192 / `hclk_cpu_pre` 96 / `pclk_cpu_pre` 48;
+  `sdmmc0` 48 MHz; `aclk_lcdc1_pre` (= `aclk_vio1_niu`, `aclk_lcdc1`) and `hclk_disp_pre` (= `hclk_ebc`) **256 MHz from
+  GPLL / 3** (CLKSEL_CON31 0x8282, CLKSEL_CON30 0x8200; both asked 300 MHz). On that boot `codec_pll` stayed at 24 MHz
+  (640 asked), so the CPLL-side numbers above (`hclk_disp_pre` 320 from CPLL) are from the Android boot and the choice of
+  parent depends on the CPLL state at probe [VERIFY]. The FlashData values (GPLL 132, both display clocks GPLL / 1) are what
+  a kernel that never retunes GPLL keeps.
 
 ### 3.3 Clocks, gates and resets of the RC2 blocks
 
@@ -696,7 +734,8 @@ the stock FIQ debugger on UART2 is therefore of little use.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
-- Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; QoS offsets in the CPU AXI window.
+- Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
+  read under the stock kernel (§1.4).
 - CLKSEL23 write behaviour (one test write); EBC clock gating between updates.
 - PL310 attributes for mainline (stock `AUX_CTRL` 0x76030001).
 - Whether the eMMC controller has the dw_mmc internal DMA (IDMAC, `BMOD`/`DBADDR`): stock uses the external PL330 through
@@ -732,3 +771,29 @@ PHY and NoC writes in the same emulation; it leaves out the clock setup, the det
   works (§4.2) [STRONG, not tried on the device].
 - **Console:** UART2 at 115200 8N1 on GPIO2_C6/C7; without VBUS it switches the USB PHY to UART mode (GRF 0x20008190), so the
   banner goes out on the USB D+/D− pins.
+
+### 8.1 The stock kernel's 396 MHz set
+
+The stock kernel's `ddr.c` (banner `DDR DEBUG: version 1.01 20140303`) reprograms the DDR at boot to **396 MHz** (DPLL 792:
+`DPLL_CON0` 0x2042 = refdiv 1, fbdiv 66, postdiv 2/1). It reports `1 CS, ROW=15, Bank=8, COL=10, 512MB` and its DQS
+calibration as `Dllsel=4` / `Dllsel=5` (left / right; read from PHY REG60/61, printed swapped), `Ophsel=1`, `Cycsel=1`.
+Two dumps of the controller, PHY and NoC 61 s apart are identical [CONFIRMED-device]. Against FlashData's 300 MHz table
+(above) these registers differ:
+
+| Group | Registers at 396 MHz | What it is |
+|---|---|---|
+| uPCTL timings | TOGCNT1U 0x18c, TOGCNT100N 0x27, TRFC 0x77, TRAS 0xf, TRC 0x15, TWR 6, TRSTL 0x28 | frequency-dependent timing (vendor `ddr_get_parameter(396)`) |
+| NoC | DdrTiming (0x1012800c) 0x24717315 | frequency-dependent timing |
+| PHY | REG25/26 0x77 (DQ drive), REG27/28 0x88 (DQ ODT), REG0e4/124 0x0e (DQS ODT on), REG2a 0x03 | the kernel's drive/ODT policy above 333 MHz; REG2a from its DLL setup (bits 1:0 undocumented) |
+| uPCTL policy | MCFG 0x54021 (adds PD_IDLE 0x40), MCFG1 0x80000000 (hw_exit_idle_en) | low-power policy, not timing |
+| Clock | DPLL_CON0 0x2042 | DPLL 792 MHz |
+
+Mode registers are not readable; from the vendor source and the stock binary: **MR0 0x420** (BL8, CL 6, WR 6), **MR1 0x40**
+(drive RZQ/6 = 40 Ω, Rtt_Nom RZQ/2 = 120 Ω), MR2 0 (CWL 5), MR3 0 [STRONG]. The dmesg line `DRV Pull-Up=0x6, Pull-Dwn=0x7
+/ ODT Pull-Up=0x1, Pull-Dwn=0x0` is the same 0x77 / 0x88 PHY bytes printed as RK2928 3-bit fields. Every timing word equals
+the vendor formulas at 396 MHz and none is below the DRAM datasheet minimums [STRONG].
+
+A mainline-based U-Boot SPL that writes this set (timings, NoC, PHY, DPLL, MR0/MR1; without the PD_IDLE/MCFG1 policy)
+**boots the RC2 and passes memory tests** [CONFIRMED-device]: `ddrphy` 396 MHz, the registers equal the stock dump apart
+from MCMD, MCFG/MCFG1 and the calibration result REG60; U-Boot `mw`/`cp`/`cmp` over 2 × 64 MiB with two patterns, and in
+Linux five md5 runs over a 96 MiB file while a `dd bs=4M` loop streams memory, all equal, no oops.

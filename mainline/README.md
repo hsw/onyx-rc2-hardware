@@ -63,6 +63,19 @@ What the runs showed [CONFIRMED-device unless marked]:
   armed by the loader fed.
 - **PMIC buses:** with i2c0 and i2c2 enabled and no client nodes, the ACT8931 and the TPS65185 answer through `i2c-dev`; nothing
   writes them.
+- **DDR at 396 MHz:** a mainline-based U-Boot SPL with the stock kernel's 396 MHz register set runs the RC2 and passes
+  memory tests in U-Boot and in Linux under load ([`../soc/README.md`](../soc/README.md) §8.1). With FlashData's table the
+  mainline system runs DDR at 300 MHz for its whole uptime (there is no DDR frequency driver).
+- **CPLL after an EBC unload:** unloading an out-of-tree EBC driver module powers CPLL down (`CPLL_CON1` bit 13 set, read
+  0x3043). A cores-only restart keeps the CRU state, so the next boot's SD clock, parented on CPLL during card
+  identification, is dead and the card is not found. The kernel has to power the PLLs up at clock init and before a
+  restart; with that, unload then restart came back 9 times out of 9.
+- **E-Ink under DRAM load (open):** with an out-of-tree EBC driver, a CPU loop that streams memory (`dd bs=4M`, far beyond the
+  L2) makes the panel show grey noise or streaked bands on page turns, while every EBC scan completes all 38 frames and the
+  driver's image is normal; the same loop with a 16 KiB buffer (L1-resident) leaves the panel crisp, so DRAM traffic is the
+  trigger. Not cured by any NoC QoS priority (EBC port 0xF, LCDC1 0xF, CPU ports already 0; [`../soc/README.md`](../soc/README.md)
+  §1.4), by moving the EBC's AXI NIU clock (`aclk_lcdc1_src`) from 132 to about 213 MHz, or by DDR 396 instead of 300 MHz.
+  The stock kernel under the same load has not been tried yet [VERIFY].
 
 ## Summary
 
