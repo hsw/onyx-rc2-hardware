@@ -9,7 +9,10 @@ This page decodes those values and compares them with what the stock kernel repo
 say. The wiring of the rails is in [`../board/README.md`](../board/README.md) §2; the SoC side (pins, GRF, clocks) in
 [`../soc/README.md`](../soc/README.md); the mainline drivers in [`../mainline/README.md`](../mainline/README.md).
 
-References: **DS** = the Active-Semi ACT8931 datasheet, Rev 3 (2012-11-29), printed page numbers; **ML** = mainline Linux v7.2;
+References: **DS** = the Active-Semi ACT8931 datasheet, Rev 3 (2012-11-29), printed page numbers. Qorvo's last edition, Rev D
+(January 2020, 46 pp.), is the same document re-templated: a text and register-map diff finds no technical change (same
+register map, defaults, ordering table, electrical tables and sequencing text), and it has no revision history or errata
+section; its page numbers are shifted. **ML** = mainline Linux v7.2;
 **RY** = [rychly/rk3026-linux-sources](https://github.com/rychly/rk3026-linux-sources).
 
 Marks: **[CONFIRMED-device]** = read on the device; **[CONFIRMED-src]** = read in the datasheet or in a source tree;
@@ -23,6 +26,9 @@ Marks: **[CONFIRMED-device]** = read on the device; **[CONFIRMED-src]** = read i
   DDR (1.35 V) and ARM (1.40 V) are below 2.4 V, where both tables agree, and are unaffected [CONFIRMED-device on the registers].
 - **VSET1 = VSET2** on all three DCDCs; **VSEL = GPIO0_A3 is high**, so the live bank is **VSET2**.
 - **LDO2 and LDO4 are off at idle.** LDO4 is the EPD logic supply, switched by the EBC driver per update.
+- **ACT8931 behaviour (§1.7):** ON bits are edge-triggered; 0x78 status bits clear on read; the registers survive reboots and
+  power-off on battery, so the next OS sees what the last one wrote (DCDC1 0x3b after Android); nIRQ reaches no readable
+  GPIO; the part is most likely the ACT8931AQJ633-T; datasheet Rev D (2020) is technically Rev 3 (2012).
 - **TPS65185 answers on I²C while LDO4 is off**, so its VIN is not LDO4.
 - **TPS65185**: r1p2, VCOM 1.66 V, the stock power-up sequence UPSEQ0/1 = 0x39/0x11 (not TI's defaults), PG = 0 with the rails off.
 - **CW2015**: the battery profile in the chip is byte-identical to the 64-byte profile in the stock kernel Image, so a mainline
@@ -63,9 +69,9 @@ kernel (and RY `act8931.c`) uses a 65-entry table with an extra 2850 after 2800 
 | 0x64 / 0x65 | 0x37 / 0x41 | LDO4 3.10 V; **off** (EPD logic, switched per update) | 3.0 V, disabled |
 | 0x70 | 0xFF | reserved (DS default 0x50) | |
 | 0x71 | 0x28 | SUSCHG 0 (charging allowed), total timer 5 h, precondition timer 80 min, OVP 6.6 V | |
-| 0x78 | 0x07 | status bits 0; **TEMPDAT 1** (battery temperature valid), **INDAT 1** (valid CHGIN), **CHGDAT 1** (end of charge) | `rk-usb` online, battery full 100 % |
+| 0x78 | 0x07 | interrupt status bits 7:4 (TIMRSTAT, TEMPSTAT, INSTAT, CHGSTAT) 0, **cleared by every read** (DS charger sections); plain status bits 3:0: **TEMPDAT 1** (battery temperature valid), **INDAT 1** (valid CHGIN), **CHGDAT 1** (end of charge) | `rk-usb` online, battery full 100 % |
 | 0x79 | 0x00 | all charger interrupts disabled (the RY driver has them under `#if 0`) | |
-| 0x7A | 0xDD | **CSTATE (bits 5:4) = 01** at end of charge; **ACINSTAT 0** (ACIN below 1.2 V → USB mode); bits 7:6, 3:2 and 0 read 1 although the DS calls them reserved/0 | |
+| 0x7A | 0xDD | **CSTATE (bits 5:4) = 01** = end of charge (§1.5); **ACINSTAT 0** (ACIN below 1.2 V → USB mode); bits 7:6, 3:2 and 0 read 1 although the DS calls them reserved/0 | |
 | 0x0B | **0x00** | not in the DS (ACT8865's unlock register); answers 0, unlike the absent registers | |
 | 0x24/0x34/0x44/0x52/0x56/0x62/0x66 | 0xFF each | ACT8865's `*_SUS` registers: not implemented, read as all ones | |
 
@@ -106,7 +112,10 @@ multimeter: the register contents and the datasheet curve are enough.
 
 - 0x78 INDAT = 1 with the USB cable attached [CONFIRMED-device]; the reading without the cable is still missing [VERIFY]. If CHGIN
   is VBUS (the RC2 charges only from USB [STRONG]), INDAT is the best "online" signal on this board.
-- 0x7A CSTATE = 01 at end of charge is one data point; the DS does not spell out the CSTATE encoding [VERIFY].
+- CSTATE: DS Table 10 (p. 38) gives 11 precondition, 10 fast charge / top-off, 01 end of charge, 00 suspended / disabled /
+  fault, and the text puts CSTATE[1:0] at 0x7A bits 5:4 (p. 14). The register-map row on p. 9 lists the two names the other
+  way round (CSTATE[0] at bit 5). The RC2's 0xDD read as bits 5:4 = 01 = end of charge, which matches CHGDAT = 1 and the
+  full battery, only in the text order: read bit 5 as CSTATE[1] [STRONG].
 - ACINSTAT = 0: USB mode (450/90 mA by CHGLEV). On the SoC side GPIO1_B2 is low and GPIO1_A1 high (the charge-current selects of
   the board file); that GPIO1_B2 drives ACIN is a [GUESS].
 
@@ -133,6 +142,37 @@ multimeter: the register contents and the datasheet curve are enough.
   only the power-hold path has been tested: GPIO1_A2 low switches the book off on battery with no PMIC write, and with USB
   power present the board stays up [CONFIRMED, [`../power/README.md`](../power/README.md) §5]. So a `gpio-poweroff` on GPIO1_A2
   (active low) is enough; MSTROFF stays untested [VERIFY].
+
+### 1.7 Behaviour a driver has to know
+
+- **The ON bits are edge-triggered** (DS p. 31 for the step-down regulators, p. 33 for the LDOs): "The regulator accept
+  rising or falling edge of ON[ ] bit as on/off signal"; to enable, clear ON and then set it, to disable, set it and then
+  clear it [CONFIRMED-src]. A read of ON therefore shows the last edge written, not the output state, and a
+  read-modify-write that finds ON already set enables nothing. The OK bit is no substitute on the LDOs (§1.2).
+- **0x78 bits 7:4 clear on every read** (TIMRSTAT, TEMPSTAT, INSTAT, CHGSTAT: "automatically cleared to 0 upon reading",
+  DS charger sections) [CONFIRMED-src]. With 0x79 = 0 nothing uses them; if an interrupt consumer is ever added, every read of
+  0x78 is also its acknowledge. The vendor's SRAM code reads 0x78 for INDAT too (RY `arch/arm/mach-rk2928/i2c_sram.c`,
+  `act8931_dc_det`).
+- **The registers keep their values until the power is gone.** DS p. 9, note 2: bits return to their defaults only when the
+  input power is removed or falls below the system UVLO (VSYS 2.2–2.65 V); a battery-fed book never gets there. What the
+  last OS wrote is still in the chip in the next boot, after a warm reset and after a power-off alike: boots that followed
+  stock Android read DCDC1 VSET1/VSET2 = **0x3b/0x3b** (3.5 V by the DS, stock's "3.4 V"), once VSET1 = **0x36** (stock's
+  suspend value for the bank that is not live, 3.0 V by the DS) with VSET2 = 0x3b [CONFIRMED-device]. Stock writes 0x3b
+  while the Wi-Fi/BT module is powered (§1.3; [`../board/README.md`](../board/README.md) §2) and 0x3a with it off, as in
+  §1.2 [STRONG: the stock table and board code; a dump with Wi-Fi on is missing]; the DS default is 0x39 (3.3 V). Even
+  3.5 V on VCCIO is inside the RK3026's range: DS V1.2 Table 8 (p. 51) VDDIO 2.97–3.63 V, Table 7 (p. 50) 3.63 V absolute
+  maximum [CONFIRMED-src].
+- **nIRQ is not wired to a readable SoC GPIO.** nIRQ is an open-drain output (DS p. 5, p. 27). With the charger-input
+  interrupt armed (INCON and INDIS in 0x79, INSTAT in 0x78), the input levels of all four GPIO banks were sampled for
+  600 s while the USB cable was pulled and plugged again; the charger saw 5 input events (CSTATE and INSTAT changed), no
+  input pin moved [STRONG, device test]. Either nIRQ is not connected or it goes to a pin without a pull-up. The stock
+  kernel requests no ACT8931 interrupt either ([`../board/README.md`](../board/README.md) §2); a driver has to poll.
+- **Which part.** Both datasheet editions list one ordering code, **ACT8931AQJ633-T** (TQFN55-40, "Advanced PMU for
+  Rockchip RK2928/RK2926"), and the register-map defaults are that part's. The RC2's OTP-only sequencing bits match it
+  (DELAY 0 on REG1 and the LDOs, 1 on REG2/REG3: CTRL 0x81, 0x85, 0x85, 0xC1/0x41), and stock relies on the QJ6##
+  behaviour "MSTROFF … automatically cleared when … a valid CHGIN voltage is detected" (p. 10) [STRONG]. The top mark is
+  unread: this RC2 has not been opened, and the PMIC in the public board photos
+  ([`../device/README.md`](../device/README.md#board-revision-and-chip-markings)) shows no readable mark.
 
 ## 2. TPS65185 (i2c2 0x68; WAKEUP high)
 
@@ -190,6 +230,7 @@ not reload it or reset the gauge; ATHD 0 also keeps it away from the mainline AT
 
 ## 4. Still [VERIFY]
 
-- ACT8931 0x78 without the cable (INDAT = 0?), the CSTATE encoding, what register 0x0B really is.
+- ACT8931 0x78 without the cable (INDAT = 0?), what register 0x0B really is, the chip's top mark (OTP and date code), the
+  real DCDC voltages with a meter.
 - GPIO0_A3 across a SoC reset.
 - TPS65185 PWR_GOOD and nINT wiring; which power-up sequence the ED060KD1 needs.
