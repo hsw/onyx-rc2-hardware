@@ -61,10 +61,18 @@ Confidence marks on this page:
   the remap set only around that pulse. Hotplug works (§4.3).
 - **Warm resets:** `GLB_SRST_SND`, `GLB_SRST_FST` and a watchdog reset all restart through the BootROM (microSD first) and keep
   the DDR contents. The Cortex-A9 keeps L1 cache lines across them, so a first-stage loader must invalidate L1 at entry (§4.5).
-  Both CRU global resets also reset the GPIO1 block and so drop the ACT8931 power hold (GPIO1_A2): on battery they switch
-  the book off. A cores-only SOFTRST_CON0 reset keeps GPIO1 and restarts it on battery [CONFIRMED-device].
-- **Measured on the device:** APLL 912, DPLL 792 (DDR 396), **CPLL 640**, GPLL 768 MHz; `dclk_ebc` 160 MHz from CPLL; the keys,
-  the cover sensor and I2C2 run with the internal pull disabled (external pull-ups, DTS `bias-disable`).
+  Both CRU global resets, and the watchdog reset, also reset the GPIO1 block and so drop the ACT8931 power hold (GPIO1_A2):
+  on battery they switch the book off (tried with SND). A cores-only SOFTRST_CON0 reset keeps GPIO1 and restarts it on
+  battery [CONFIRMED-device]; it also keeps the rest of the CRU, a PLL left powered down included (§4.5).
+- **Measured on the device:** APLL 912, DPLL 792 (DDR 396), **CPLL 640**, GPLL 768 MHz; `dclk_ebc` 160 MHz from CPLL; the CPU
+  and peripheral buses at 192/96/48 MHz on GPLL, independent of the ARM clock; the CPU at 1.40 V, the datasheet's absolute
+  maximum (§3.5); the keys, the cover sensor and I2C2 run with the internal pull disabled (external pull-ups, DTS
+  `bias-disable`).
+- **E-Ink under DRAM load:** the EBC needs a fast AHB clock: at `hclk_disp_pre` 132 MHz it drives garbage while the CPU
+  streams through DRAM, at 213 and 256 MHz it is clean (§3.6).
+- **SD/MMC:** the controllers are the RK2928 type, with no internal divide-by-two of the card clock (§3.7).
+- **DDR:** the stock kernel runs 396 MHz with the timings of the vendor `ddr.c` (§8.1); the Kepler boards carry a Samsung
+  K4B4G1646E (DDR3L, 4 Gb ×16), CL6/CWL5 at that clock (§8.2).
 
 ## 1. MMIO map
 
@@ -408,7 +416,14 @@ mux/divider, or check with one write first [VERIFY].
 - Ids: APLL 0 (ARM), DPLL 1 (DDR), CPLL 2 ("codec PLL"), GPLL 3.
 - Fields: CON0 FBDIV[11:0], POSTDIV1[14:12], BYPASS[15]; CON1 REFDIV[5:0], POSTDIV2[8:6], LOCK[10] (read), DSMPD[12],
   PWR_DN[13]; CON2 FRAC[23:0]. **This is the `pll_rk3036` type** of mainline `clk-pll.c` [CONFIRMED-src]. Integer mode
-  (DSMPD = 1): `Fout = 24 MHz × FBDIV / REFDIV / POSTDIV1 / POSTDIV2`.
+  (DSMPD = 1): `Fout = 24 MHz × FBDIV / REFDIV / POSTDIV1 / POSTDIV2`; fractional mode (DSMPD = 0) adds FRAC / 2^24 to
+  FBDIV. The VCO is `24 MHz / REFDIV × FBDIV`, before the two post dividers.
+- Limits, DS V1.2 §4.6 Table 17 (pp. 56–57) [CONFIRMED-src]: input 1–800 MHz (fractional mode 10–800), **VCO 600–2400
+  MHz**, output 12–2400 MHz, 24-bit fraction; lock time 1000 input-clock cycles typical, 1500 maximum (41.7 / 66.7 µs at
+  24 MHz, REFDIV 1); output duty cycle 48–52 % for even and 47–53 % for odd dividers. Table 10 (p. 53) gives the maximum
+  PLL rates at 1.1 V / 25 °C (in brackets 1.21 V / −40 °C and 0.99 V / 125 °C): ARM PLL 1530 (1960, 800), DDR PLL 1390
+  (1690, 800), codec PLL 1030 (1380, 600), general PLL 1010 (1350, 600) MHz. The stock VCOs below (APLL 1824, DPLL 1584,
+  CPLL 640, GPLL 768 MHz) are all inside the VCO range; CPLL's sits near its 600 MHz floor.
 - Read on the device [CONFIRMED-device]:
 
 | PLL | CON0 / CON1 | FBDIV | REFDIV | POSTDIV1 / 2 | Fout | Kernel view |
@@ -423,19 +438,21 @@ mux/divider, or check with one write first [VERIFY].
 - **CPLL is retuned by the EBC driver once.** RY's board header sets CPLL to 594 MHz at boot; the EBC probe asks for
   `dclk_ebc` = 4 × 40 MHz = 160 MHz, and the vendor clock code then scans 700 MHz downward for the first exact multiple
   (div 4 → CPLL 640 MHz). With the display idle CPLL is still 640 MHz: it is set once at probe and never moved back or retuned
-  per update [CONFIRMED-device]. Side effects on the other CPLL children: `hclk_disp_pre` 320 MHz (asked 300), I2S 12.164 MHz
-  (asked 11.2896; there is no speaker on V1.73).
-- The loader (FlashData) leaves APLL 600 MHz, GPLL 132 MHz and DDR 300 MHz; under the stock kernel DDR runs at 396 MHz.
+  per update [CONFIRMED-device]. Side effects on the other CPLL children after an Android boot through the stock loader
+  (register dump of 2026-10-11): `hclk_disp_pre` 320 MHz (CPLL / 2, CLKSEL_CON30 0x0100; asked 300), I2S 12.164 MHz (asked
+  11.2896; there is no speaker on V1.73).
+- The loader (FlashData, §8) leaves APLL 600 MHz, GPLL 132 MHz and DDR 300 MHz; under the stock kernel DDR runs at 396 MHz.
+  Neither the BootROM nor FlashData writes a CPLL register [STRONG: their code], so CPLL keeps what the reset or the
+  previous system left (§4.5).
 - **Bus clocks under the stock kernel** (`/proc/clocks`, stock kernel booted from microSD, 2026-10-18) [CONFIRMED-device]:
   `aclk_periph` 192, `hclk_periph` 96, `pclk_periph` 48 MHz; `aclk_cpu_pre` 192 / `hclk_cpu_pre` 96 / `pclk_cpu_pre` 48;
   `sdmmc0` 48 MHz; `aclk_lcdc1_pre` (= `aclk_vio1_niu`, `aclk_lcdc1`) and `hclk_disp_pre` (= `hclk_ebc`) **256 MHz from
-  GPLL / 3** (CLKSEL_CON31 0x8282, CLKSEL_CON30 0x8200; both asked 300 MHz). On that boot `codec_pll` stayed at 24 MHz
-  (640 asked), so the CPLL-side numbers above (`hclk_disp_pre` 320 from CPLL) are from the Android boot and the choice of
-  parent depends on the CPLL state at probe [VERIFY]. The FlashData values (GPLL 132, both display clocks GPLL / 1) are what
-  a kernel that never retunes GPLL keeps.
-- **The EBC fetches its images over AHB**, so `hclk_disp_pre` / `hclk_ebc` (CLKSEL_CON30), not `aclk_lcdc1` (CON31), sets its
-  fetch bandwidth. At the FlashData 132 MHz the panel shows garbage under CPU memory load; about 213 MHz cures it
-  ([`../mainline/README.md`](../mainline/README.md) §0) [CONFIRMED-device].
+  GPLL / 3** (CLKSEL_CON31 0x8282, CLKSEL_CON30 0x8200; both asked 300 MHz); I2S 11.2896 MHz from GPLL. On that boot
+  `/proc/clocks` showed `codec_pll` at 24 MHz (640 asked), while the CRU held CPLL at 640 MHz in normal mode
+  (CPLL_CON0/1 0x1050/0x1443, `MODE_CON` 0x1111; the boot followed a warm restart from another kernel). So the CPLL-side
+  numbers above (`hclk_disp_pre` 320 from CPLL) are from the Android boot, and the choice of parent depends on the CPLL
+  state the vendor clock code sees at probe [VERIFY]. The FlashData values (GPLL 132, both display clocks GPLL / 1) are
+  what a kernel that never retunes GPLL keeps. The stock tree against the datasheet limits: §3.5.
 
 ### 3.3 Clocks, gates and resets of the RC2 blocks
 
@@ -486,7 +503,81 @@ Seen on the device:
 Verdict [STRONG]: a new `clk-rk3026.c` with its own `dt-bindings/clock/rk3026-cru.h`; PLL part after `clk-rk3128.c`, peripheral
 gates and resets after `clk-rk3036.c`. Restart: the vendor reboots through a core reset run from SRAM (RY `reset.c`), not
 through the global resets. On the RC2 `GLB_SRST_SND` (0xeca8, the mainline restart handler) and `GLB_SRST_FST` (0xfdb9) both
-restart through the BootROM, once the IMEM remap is off and the first stage invalidates L1 (§4.5) [CONFIRMED-device, ML-RC2].
+restart through the BootROM, once the IMEM remap is off and the first stage invalidates L1 (§4.5) [CONFIRMED-device, ML-RC2];
+on battery only the vendor-style core reset restarts the book (§4.5).
+
+### 3.5 Stock clock tree against the datasheet
+
+Stock 3.0.36+ kernel at 912 MHz, read on the device (`/proc/clocks` and the CRU words agree) [CONFIRMED-device]. Limits
+from DS V1.2 Tables 11–13 (pp. 53–55): maximum at 1.1 V / 25 °C, in brackets at 0.99 V / 125 °C [CONFIRMED-src].
+
+| Clock | Register (stock value) | Stock MHz | DS maximum |
+|---|---|---|---|
+| core, L2 (`l2c`) | CLKSEL0 (0x2300) [7] = 0 APLL, [4:0] /1 | 912 | ARM PLL 1530 (800) |
+| `aclk_core`, `core_periph` (A9 PERIPHCLK) | CLKSEL1 (0x3133) [6:4] /4, [3:0] /4 | 228, 228 | — |
+| `aclk_cpu` | CLKSEL0 [13] = 1 **GPLL**, [12:8] /4 | 192 | CPU_ACLK 520 (300) |
+| `hclk_cpu`, `pclk_cpu` (GRF, DDR controller APB) | CLKSEL1 [9:8] /2, [14:12] /4 of `aclk_cpu` | 96, 48 | CPU_HCLK 190 (150), CPU_PCLK 170 (75) |
+| `aclk_peri`, `hclk_peri`, `pclk_peri` | CLKSEL10 (0x2103) GPLL /4, then /2, /4 | 192, 96, 48 | 498 (300), 259 (150), 140 (75) |
+| DDR | DPLL 792 → `ddrphy2x` 792 → `ddrphy`, `ddrc` | 396 | DDR_PHY1X_CLK 760 (400) |
+| `hclk_disp_pre` = `hclk_ebc` | CLKSEL30 | 320 or 256 (§3.2) | DISP_HCLK 370 (200) |
+| `aclk_lcdc1_pre` (EBC AXI, `aclk_vio1_niu`) | CLKSEL31 (0x8282) GPLL /3 | 256 | DISP_ACLK 530 (300) |
+| `dclk_ebc` | CLKSEL23 CPLL /4 | 160 | — |
+| `sclk_sdmmc` | CLKSEL11 (0x274f) GPLL /16 | 48 (card 24, §3.7) | MMC0_CLK 100 (100) |
+
+- **The CPU bus runs from GPLL, not from APLL**, so `aclk/hclk/pclk_cpu` do not follow the ARM clock. The vendor's ARM rate
+  change (`apll_clk_set_rate`, RY `mach-rk3026/clock_data.c`) puts APLL in slow mode, reprograms it, changes only
+  `aclk_core`/`core_periph` (CLKSEL1[6:0]) with the rate, waits for lock and returns to normal mode; it never switches the
+  core mux (CLKSEL0 bit 7) [CONFIRMED-src]. A clock tree that hangs `aclk_cpu` on APLL instead (the RK3036 layout) gets
+  `hclk_cpu` above the Table 11 limit at 912 MHz unless it divides further [STRONG, arithmetic].
+- **CPU voltage.** DS V1.2 Table 7 (p. 50): absolute maximum for the CPU and core supply (AVDD, CVDD) **1.40 V**; Table 8
+  (p. 50): recommended 0.90 / 1.10 / 1.35 V. The datasheet has no frequency-voltage table. Stock has one point, 912 MHz with
+  ACT8931 DCDC3 at selector 0x1C = 1.40 V nominal ([`../pmic/README.md`](../pmic/README.md) §1.2): at the absolute maximum
+  and above the recommended range [selector CONFIRMED-device; the rail was not measured]. Rockchip's SDK boards use less:
+  RY `board-rk3026-tb.c` 312 MHz at 0.95 V, 504 at 1.00, 816 at 1.20, 912 at 1.25, 1008 at 1.35 V; `board-rk3026-86v-fac.c`
+  312 and 504 at 1.20, 816 at 1.25, 1008 at 1.35 V [CONFIRMED-src]. The vendor `mach-rk3026/dvfs.c` notes "avdd_com &
+  vdd_arm short circuit", so the logic shares the ARM rail [STRONG]. Neither datasheet lists a temperature sensor (no
+  TS-ADC), so nothing on the chip reports the die temperature.
+- **L2 cache** (PL310 r3p3, `CACHE_ID` 0x4100c0c9). The stock kernel prints `AUX_CTRL 0x76030001` [CONFIRMED-device]: 16
+  ways × 16 KiB = 256 KiB, round-robin, instruction and data prefetch, early BRESP, full line of zeros. The vendor
+  `l2_cache_init` (RY `mach-rk3026/common.c`) forces these AUX bits once at boot and sets the tag RAM latency to 0x000 (1
+  cycle each) and the data RAM latency to **0x021** (setup 2, read 3, write 1 cycle; fields [2:0], [6:4], [10:8] hold
+  cycles − 1), prefetch control 0x70000003, dynamic clock gating and standby; nothing changes them on a rate change
+  [CONFIRMED-src; the latency registers were not read under the stock kernel]. In mainline DT terms: `arm,tag-latency =
+  <1 1 1>`, `arm,data-latency = <3 1 2>` (read, write, setup). A kernel that keeps AUX as it finds it reads 0x46020001
+  (8 ways, 128 KiB, no prefetch) [CONFIRMED-device], so the cache size and prefetch must be set explicitly.
+
+### 3.6 The EBC's fetch clock (`hclk_disp_pre`)
+
+**The EBC fetches its images over AHB**, so `hclk_disp_pre` / `hclk_ebc` (CLKSEL_CON30), not `aclk_lcdc1` (CON31), sets its
+fetch bandwidth. At the FlashData 132 MHz the panel shows garbage under CPU memory load; about 213 MHz cures it
+([`../mainline/README.md`](../mainline/README.md) §0) [CONFIRMED-device]. The register values of those tests:
+
+| CLKSEL_CON30 | Source | `hclk_disp_pre` | Where | Under DRAM load |
+|---|---|---|---|---|
+| 0x8000 | GPLL 132 / 1 | 132 MHz | FlashData; mainline before the fix | garbage, although the driver reports complete scans (38 of 38 frames, 454 ms) |
+| 0x0200 | CPLL 640 / 3 | ≈ 213 MHz | live test: one hiword write `0x9f000200` (bits 15 and 12:8 only) | clean |
+| 0x8200 | GPLL 768 / 3 | 256 MHz | stock kernel booted from microSD; mainline with the stock bus clocks | clean (mainline) |
+| 0x0100 | CPLL 640 / 2 | 320 MHz | stock kernel after an Android boot (§3.2) | not tested under load |
+
+- No effect on the garbage: the EBC's own QoS port (0x1012f088, reads 0x8) raised to 0xF, LCDC1's to 0xF; the CPU ports,
+  which already read 0, the vendor's value (§1.4); `aclk_lcdc1_src` (the EBC's AXI clock, CLKSEL_CON31) raised from 132 to
+  ≈ 213 MHz; DDR at the stock 396 MHz instead of 300 [CONFIRMED-device].
+- So keep `hclk_disp_pre` well above `dclk_ebc` (160 MHz); the stock 256 MHz is the safe choice [STRONG].
+
+### 3.7 SD/MMC: no internal divide-by-two
+
+The RK3026's MMC controllers pass the CRU clock (`sclk_sdmmc`, the dw_mmc CIU clock) to the card divided only by their own
+CLKDIV (CIU / 2·n, or CIU itself with n = 0). That is the **RK2928 type** of mainline `dw_mmc-rockchip`
+(`rockchip,rk2928-dw-mshc`, as on RK3066/RK3188), not the RK3288 type, which assumes an internal / 2 and phase clocks in
+the CRU.
+
+- Source: RY `drivers/mmc/host/rk29_sdmmc.c` `rk29_sdmmc_change_clk_div` computes CLKDIV from the full `sclk` rate, and the
+  RK3026 CRU (`cru.h`) ends at 0x140, with no MMC phase registers [CONFIRMED-src].
+- Device: described as the RK3288 type, the driver set the CIU to 48 MHz and bypassed CLKDIV for a requested 24 MHz, so the
+  default-speed card got 48 MHz and failed the first commands after the switch with CRC errors (`error -84`); with an
+  earlier 44 MHz CIU it ran out of spec without errors. As the RK2928 type the same 48 MHz CIU with CLKDIV 1 gives 24 MHz,
+  and the card reads at 10.9 MB/s, more than a 12 MHz card clock (the / 2 model) can carry on a 4-bit bus
+  [CONFIRMED-device]. The stock kernel runs the same 48 MHz `sclk_sdmmc` (GPLL / 16).
 
 ## 4. GRF (0x20008000)
 
@@ -606,8 +697,8 @@ prints `rk3026 soc version:4` [CONFIRMED-device].
 
 ### 4.5 Warm resets
 
-Tested on the RC2 from mainline Linux and a mainline-based U-Boot started from microSD (ML-RC2). "Back" = the BootROM ran
-its normal order again and booted the microSD card [CONFIRMED-device]:
+Tested on the RC2 from mainline Linux and a mainline-based U-Boot started from microSD (ML-RC2), with the USB cable
+attached. "Back" = the BootROM ran its normal order again and booted the microSD card [CONFIRMED-device]:
 
 | Reset | Write | Result |
 |---|---|---|
@@ -621,6 +712,27 @@ its normal order again and booted the microSD card [CONFIRMED-device]:
 panic and a watchdog reset, U-Boot's `pstore display` on the ramoops area (0x7ff40000, reserved in the DT) shows the whole
 panic log, and the next kernel's `/sys/fs/pstore` still holds it.
 
+**What each reset clears, and the power hold.** A sentinel value was written to the GPIO1 `DEBOUNCE` register
+(0x20080048) before each reset and read again at the U-Boot prompt afterwards [CONFIRMED-device]:
+
+| Reset | GPIO1 bank | GRF `OS_REG0..5` | On battery |
+|---|---|---|---|
+| `GLB_SRST_SND` | reset (sentinel 0) | kept | **the book switches off**: the power hold GPIO1_A2 is in the reset GPIO1 bank, the status LED goes out, nothing restarts until USB power returns (the ramoops buffer is lost) |
+| `GLB_SRST_FST` | reset | kept | not run on battery; same GPIO1 result as SND |
+| core reset (`SOFTRST_CON0` 0x801cffff) | kept | kept | **restarts**; DDR and the ramoops buffer kept |
+| watchdog (dw-wdt) | reset | kept | not run on battery; same GPIO1 result as SND |
+
+- With USB power the ACT8931 stays up while the hold is low (as at power-off, [`../power/README.md`](../power/README.md) §5),
+  which is why every reset in the first table came back.
+- The watchdog reset is a global one. `SOFTRST_CON0` bit 0 (`CORE_SRST_WDT_SEL` in the RK2928-family header, no
+  documentation) set to 1 does not make it core-only, and the bit reads 0 again after the reset [CONFIRMED-device]. So a
+  watchdog that fires on battery switches the book off [STRONG].
+- **A core reset leaves the CRU as it was**, a powered-down PLL included: after a kernel had powered CPLL down (`PLL_CON1`
+  bit 13 PWR_DN) and restarted through a core reset, the next boot read `MODE_CON` 0x1011 (CPLL in slow mode) and
+  `CPLL_CON1` 0x3041 (PWR_DN set, LOCK clear) [CONFIRMED-device]. Neither the BootROM nor FlashData touches CPLL (§3.2), and
+  a powered-down PLL passes no clock in slow mode either [STRONG]: the next kernel's SD clock, taken from CPLL, was dead
+  ([`../mainline/README.md`](../mainline/README.md) §0, "CPLL after an EBC unload").
+
 What a warm reset does **not** clear, and what follows from it:
 
 - **L1 caches.** The Cortex-A9 does not invalidate its caches on reset; software must. The stock kernel cleans and disables
@@ -632,8 +744,9 @@ What a warm reset does **not** clear, and what follows from it:
   invalidate only) plus TLBIALL, ICIALLU and BPIALL at entry, SND and FST resets from mainline come back
   [observation CONFIRMED-device; mechanism STRONG]. The sdboot stage2 ([`../bootrom/sdboot/`](../bootrom/sdboot/README.md))
   does exactly this at entry. U-Boot's `enable_caches` invalidates L1 before it turns the MMU on.
-- **The GRF**, including the IMEM remap (`SOC_CON0` bit 12) [STRONG for SND: the vendor clears the remap before every reset,
-  and every reset on the device came back only with it off; VERIFY for FST]. With the remap set, a core that restarts at
+- **The GRF**: `OS_REG0..5` survive SND, FST and the core reset (table above) [CONFIRMED-device]; the IMEM remap
+  (`SOC_CON0` bit 12) too [STRONG for SND: the vendor clears the remap before every reset, and every reset on the device
+  came back only with it off; VERIFY for FST]. With the remap set, a core that restarts at
   address 0 lands in IMEM, not in the BootROM.
 - **IMEM** (usage map: §1.3). The BootROM rewrites only IMEM+0 (delay factor), +4 (mailbox) and +0xc (secure flag)
   [CONFIRMED-dis]; anything
@@ -641,8 +754,8 @@ What a warm reset does **not** clear, and what follows from it:
   is set. With a diagnostic kernel that kept the remap set and left data there, warm resets into itself died between
   frames; clearing the remap and zeroing IMEM 0x00–0x3f before every reset, and setting the remap only around the CPU1
   pulse, made every such reset come back with 2 CPUs [fix CONFIRMED-device; mechanism (CPU1 running loose in IMEM) STRONG].
-- **The power hold** (GPIO1_A2) stays high, so the board stays powered. A reset that never reaches the BootROM therefore
-  leaves the book "dead" (panel black, no USB, the power key ignored because nothing reads it) until the reset pinhole
+- **Power.** With USB power, or after a core reset, the board stays powered. A reset that never reaches the BootROM
+  therefore leaves the book "dead" (panel black, no USB, the power key ignored because nothing reads it) until the reset pinhole
   [CONFIRMED-device for the symptom; STRONG for the explanation].
 
 A reset with the pinhole, with the card left in, booted the eMMC every time so far, while a reset from software boots the
@@ -731,7 +844,8 @@ the stock FIQ debugger on UART2 is therefore of little use.
 ## 7. Still [VERIFY]
 
 - What lies at GRF 0xd8/0xdc (no `GPIO3A/B_IOMUX`) and whether writing there is safe.
-- Whether `GLB_SRST_FST` keeps the GRF (`OS_REG4/5`, the IMEM remap) as SND does (§4.5); both global resets themselves work.
+- Whether `GLB_SRST_FST` keeps the IMEM remap as SND does (it keeps `OS_REG0..5`, §4.5); whether FST and watchdog resets on
+  battery switch the book off, as SND does (both reset GPIO1 the same way).
 - After a halt and a watchdog reset CPU1 once failed to come online in the next mainline boot; not reproduced in two
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
@@ -740,7 +854,9 @@ the stock FIQ debugger on UART2 is therefore of little use.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4).
 - CLKSEL23 write behaviour (one test write); EBC clock gating between updates.
-- PL310 attributes for mainline (stock `AUX_CTRL` 0x76030001).
+- The L2 latency registers (0x10138108/0x1013810c) under the stock kernel: RY's `l2_cache_init` says 0x000/0x021 (§3.5).
+- Whether the vendor clock code picks the parent of `hclk_disp_pre` and I2S (CPLL after an Android boot, GPLL after a
+  microSD boot) by the CPLL state it sees at probe (§3.2).
 - Whether the eMMC controller has the dw_mmc internal DMA (IDMAC, `BMOD`/`DBADDR`): stock uses the external PL330 through
   the controller's DMA interface (§1.1); a register dump or a test would tell.
 
@@ -777,15 +893,15 @@ PHY and NoC writes in the same emulation; it leaves out the clock setup, the det
 
 ### 8.1 The stock kernel's 396 MHz set
 
-The stock kernel's `ddr.c` (banner `DDR DEBUG: version 1.01 20140303`) reprograms the DDR at boot to **396 MHz** (DPLL 792:
-`DPLL_CON0` 0x2042 = refdiv 1, fbdiv 66, postdiv 2/1). It reports `1 CS, ROW=15, Bank=8, COL=10, 512MB` and its DQS
-calibration as `Dllsel=4` / `Dllsel=5` (left / right; read from PHY REG60/61, printed swapped), `Ophsel=1`, `Cycsel=1`.
-Two dumps of the controller, PHY and NoC 61 s apart are identical [CONFIRMED-device]. Against FlashData's 300 MHz table
-(above) these registers differ:
+The stock kernel's `ddr.c` (RY `arch/arm/mach-rk2928/ddr.c`, built into the RK3026 kernel; banner `DDR DEBUG: version 1.01
+20140303`) reprograms the DDR at boot to **396 MHz** (DPLL 792: `DPLL_CON0` 0x2042 = refdiv 1, fbdiv 66, postdiv 2/1). It
+reports `1 CS, ROW=15, Bank=8, COL=10, 512MB` and its DQS calibration as `Dllsel=4` / `Dllsel=5` (left / right; read from
+PHY REG60/61, printed swapped), `Ophsel=1`, `Cycsel=1`. Two dumps of the controller, PHY and NoC 61 s apart are identical
+[CONFIRMED-device]. Against FlashData's 300 MHz table (above) these registers differ:
 
 | Group | Registers at 396 MHz | What it is |
 |---|---|---|
-| uPCTL timings | TOGCNT1U 0x18c, TOGCNT100N 0x27, TRFC 0x77, TRAS 0xf, TRC 0x15, TWR 6, TRSTL 0x28 | frequency-dependent timing (vendor `ddr_get_parameter(396)`) |
+| uPCTL timings | TOGCNT1U 0x18c (= 396), TOGCNT100N 0x27, TRFC 0x77 (119 cycles = 300 ns), TRAS 0xf, TRC 0x15, TWR 6, TRSTL 0x28 | frequency-dependent timing (vendor `ddr_get_parameter(396)`) |
 | NoC | DdrTiming (0x1012800c) 0x24717315 | frequency-dependent timing |
 | PHY | REG25/26 0x77 (DQ drive), REG27/28 0x88 (DQ ODT), REG0e4/124 0x0e (DQS ODT on), REG2a 0x03 | the kernel's drive/ODT policy above 333 MHz; REG2a from its DLL setup (bits 1:0 undocumented) |
 | uPCTL policy | MCFG 0x54021 (adds PD_IDLE 0x40), MCFG1 0x80000000 (hw_exit_idle_en) | low-power policy, not timing |
@@ -794,9 +910,26 @@ Two dumps of the controller, PHY and NoC 61 s apart are identical [CONFIRMED-dev
 Mode registers are not readable; from the vendor source and the stock binary: **MR0 0x420** (BL8, CL 6, WR 6), **MR1 0x40**
 (drive RZQ/6 = 40 Ω, Rtt_Nom RZQ/2 = 120 Ω), MR2 0 (CWL 5), MR3 0 [STRONG]. The dmesg line `DRV Pull-Up=0x6, Pull-Dwn=0x7
 / ODT Pull-Up=0x1, Pull-Dwn=0x0` is the same 0x77 / 0x88 PHY bytes printed as RK2928 3-bit fields. Every timing word equals
-the vendor formulas at 396 MHz and none is below the DRAM datasheet minimums [STRONG].
+the vendor formulas at 396 MHz (`ddr_get_parameter(396)` worked out by hand matches the dump word for word
+[CONFIRMED-src against the dump]), so the set can be rebuilt from public source; none is below the DRAM datasheet minimums
+[STRONG].
+FlashData's values for comparison: MCFG 0x50021, DdrTiming 0x24716310, PHY REG25/26 0xbb and REG27/28 0x44; by the RK3026
+table in `ddr.c` the PHY bytes give 44 Ω drive / 216 Ω ODT (FlashData) and 45 Ω / 215 Ω (stock); TCL 6 and TCWL 5 are the
+same in both. The runtime DDR rates (normal 396, video 300, suspend 198 MHz) are in
+[`../power/README.md`](../power/README.md) §4.3.
 
 A mainline-based U-Boot SPL that writes this set (timings, NoC, PHY, DPLL, MR0/MR1; without the PD_IDLE/MCFG1 policy)
 **boots the RC2 and passes memory tests** [CONFIRMED-device]: `ddrphy` 396 MHz, the registers equal the stock dump apart
 from MCMD, MCFG/MCFG1 and the calibration result REG60; U-Boot `mw`/`cp`/`cmp` over 2 × 64 MiB with two patterns, and in
 Linux five md5 runs over a 96 MiB file while a `dd bs=4M` loop streams memory, all equal, no oops.
+
+### 8.2 The DRAM part
+
+Samsung **K4B4G1646E-BYK0** (4 Gb E-die, ×16, DDR3L, 96-ball FBGA, DDR3L-1600 bin) is the marking on the
+Kepler V1.4 board in the FCC filing ([`../device/README.md`](../device/README.md#board-revision-and-chip-markings)
+[CONFIRMED-photo]); the chip on the RC2's own board is unread, but 512 MiB as one rank of one ×16 die with row 15, bank 8,
+column 10 is that part's geometry [STRONG]. Samsung's K4B4G1646E datasheet (Rev. 1.1, June 2016, speed-bin tables) allows
+at tCK 2.525 ns (396 MHz) only **CL6 / CWL5** (its range is 2.5–3.3 ns; CL7 / CWL6 needs less than 2.5 ns, CL5 / CWL5 at
+least 3.0 ns), which is what stock runs. 300 MHz (3.33 ns) is 1 % outside every DLL-on row of the tables (they stop at
+3.3 ns); FlashData runs it with the DLL on and it works, but it is outside the guaranteed range [table CONFIRMED-src].
+The part runs at 1.35 V (1.283–1.45 V) or 1.5 V; the RC2 feeds 1.35 V (ACT8931 DCDC2).

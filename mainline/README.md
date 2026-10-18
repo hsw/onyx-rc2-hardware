@@ -53,7 +53,8 @@ What the runs showed [CONFIRMED-device unless marked]:
   `GLB_SRST_FST` reset the GPIO1 block (a value written to GPIO1's debounce register reads 0 after either, while the GRF
   OS_REGs survive), so the power hold GPIO1_A2 drops and, without USB power, the ACT8931 switches off. A cores-only
   soft reset (SOFTRST_CON0, the stock way) keeps GPIO1: on battery the book restarts and DDR (ramoops) survives. A
-  restart handler for battery use therefore has to do the stock-like core reset, not a global one.
+  restart handler for battery use therefore has to do the stock-like core reset, not a global one (what each reset clears:
+  [`../soc/README.md`](../soc/README.md) §4.5).
 - **Power-off:** `gpio-poweroff` on the power hold GPIO1_A2 (active low) switches the book off on battery; no PMIC write is
   needed. With USB power the ACT8931 keeps the board up, so the kernel waits with the line low and the book goes off when
   the cable is pulled ([`../power/README.md`](../power/README.md) §5).
@@ -70,16 +71,18 @@ What the runs showed [CONFIRMED-device unless marked]:
   0x3043). A cores-only restart keeps the CRU state, so the next boot's SD clock, parented on CPLL during card
   identification, is dead and the card is not found. The kernel has to power the PLLs up at clock init and before a
   restart; with that, unload then restart came back 9 times out of 9.
-- **E-Ink under DRAM load: the EBC's AHB fetch clock.** With an out-of-tree EBC driver, a CPU loop that streams memory
-  (`dd bs=4M`, far beyond the L2) made the panel show grey noise or streaked bands on page turns, while every EBC scan
-  completed all 38 frames and the driver's image was normal; with a 16 KiB buffer (L1-resident) the panel stayed crisp, so
-  DRAM traffic is the trigger. The EBC fetches its images over AHB, clocked by `hclk_ebc` = `hclk_disp_pre`
-  (CLKSEL_CON30, CRU+0xbc), which the mainline clock setup leaves at GPLL / 1 = **132 MHz** (stock: 256 MHz, GPLL 768 / 3).
-  Raising it live to about 213 MHz (CPLL / 3) made all 14 page turns under the same load crisp, in two series; 132 MHz in
-  the same boot gave garbage [CONFIRMED-device; starvation of the AHB fetch as the mechanism STRONG]. Not the cause: NoC QoS
-  priorities (EBC port 0xF, LCDC1 0xF, CPU ports already 0; [`../soc/README.md`](../soc/README.md) §1.4), the AXI NIU clock
-  `aclk_lcdc1_src` (132 → about 213 MHz), DDR 396 instead of 300 MHz. A board kernel should set `hclk_disp_pre` to the
-  stock 256 MHz, or at least well above `dclk_ebc` (160 MHz).
+- **E-Ink under DRAM load: the EBC's AHB fetch clock.** With an out-of-tree EBC driver, a CPU loop that streams memory (`dd
+  bs=4M`, far beyond the L2) made the panel show grey noise or streaked bands on page turns, while every EBC scan completed
+  all 38 frames and the driver's image was normal; with a 16 KiB buffer (L1-resident) the panel stayed crisp, so DRAM
+  traffic is the trigger. The EBC fetches its images over AHB, clocked by `hclk_ebc` = `hclk_disp_pre` (CLKSEL_CON30,
+  CRU+0xbc), which the mainline clock setup leaves at GPLL / 1 = **132 MHz** (stock: 256 MHz, GPLL 768 / 3; 320 MHz from
+  CPLL after an Android boot). Raising it live to about 213 MHz (CPLL / 3) made all 14 page turns under the same load crisp,
+  in two series; 132 MHz in the same boot gave garbage [CONFIRMED-device; starvation of the AHB fetch as the mechanism
+  STRONG]. Not the cause: NoC QoS priorities (EBC port 0xF, LCDC1 0xF, CPU ports already 0;
+  [`../soc/README.md`](../soc/README.md) §1.4), the AXI NIU clock `aclk_lcdc1_src` (132 → about 213 MHz), DDR 396 instead of
+  300 MHz. A board kernel should set `hclk_disp_pre` to the stock 256 MHz, or at least well above `dclk_ebc` (160 MHz). A
+  kernel that sets the stock bus clocks (GPLL 768 MHz, `hclk_disp_pre` 256 MHz) gave 14 of 14 loaded and 7 of 7 idle page
+  turns crisp [CONFIRMED-device]. Register values: [`../soc/README.md`](../soc/README.md) §3.6.
 
 ## Summary
 
@@ -109,11 +112,11 @@ What the runs showed [CONFIRMED-device unless marked]:
 | **Power domains** | `pm-domains.c` type `DOMAIN_RK3036` (idle requests only) | own table: RK3026 req bits 8–13, ack 16–21, idle 22–27; domain-to-bit mapping [VERIFY]; not needed for a first boot | S |
 | **SAR-ADC** | `rockchip,saradc`: 3 channels | the stock ok/menu ADC keys read channel 3, but the datasheet says 2 channels on RK3026: read channel 3 on the device first [VERIFY]; only matters if those keys exist on V1.73 | S |
 | **eFuse** | `rockchip,rk3066a-efuse`: address field shifted by 6 | RK3026 shifts by 8; `rk3066a` would read the wrong bytes. Only needed for the chip version (4 on the RC2) | S |
-| **dw_mmc (SD)** | `rockchip,rk2928-dw-mshc` (no phase clocks) | DTS only; no UHS on the RC2 | — |
+| **dw_mmc (SD)** | `rockchip,rk2928-dw-mshc` (no phase clocks) | DTS only; no UHS on the RC2. Not the `rk3288` type: the RK3026 controller has no internal / 2, and with that type the card ran at twice the requested clock and failed with CRC errors ([`../soc/README.md`](../soc/README.md) §3.7) [CONFIRMED-device] | — |
 | **PWM, SPI, DMA, UART, timer, GPIO** | `pwm-rockchip` (`rk2928`, no polarity), `spi-rockchip`, `pl330`, `dw-apb-uart`, `rockchip,rk3036-timer`, `gpio-rockchip` | DTS only (the frontlight is active high, no polarity needed). The Cortex-A9 global timer and TWD PPIs are `IRQ_TYPE_EDGE_RISING` [CONFIRMED-device] | — |
-| **Watchdog** | `snps,dw-wdt` | DTS; works on the RC2, its reset restarts through the BootROM with DDR kept [CONFIRMED-device] | — |
+| **Watchdog** | `snps,dw-wdt` | DTS; works on the RC2, its reset restarts through the BootROM with DDR kept [CONFIRMED-device]; it is a global reset that clears GPIO1, so on battery it would drop the power hold ([`../soc/README.md`](../soc/README.md) §4.5) [STRONG] | — |
 | **Reboot flags** | `syscon-reboot-mode` (as `rk3036.dtsi`, offset 0x1d8) | DTS: `mode-bootloader = <BOOT_BL_DOWNLOAD>` (the RC2 loader knows LOADER and RECOVER only), `mode-recovery`; mainline's `mode-normal` 0x5242C300 (stock writes 0) is an unknown value to the stock loader and boots normally [STRONG, loader code] | S |
-| **Power-off, restart** | `gpio-poweroff`, ACT8931 MSTROFF via `system-power-controller`; restart via `GLB_SRST_FST` in the clock driver (Mario's `clk-rk3026.c` uses `GLB_SRST_SND`) | power-off: `gpio-poweroff` on GPIO1_A2, active low, works on battery with no PMIC write [CONFIRMED-device]; MSTROFF untested [VERIFY]. Restart: SND and FST both reach the BootROM once the IMEM remap is off and the loader invalidates L1 [CONFIRMED-device]; on battery SND and FST power the book off (both reset GPIO1 and drop the power hold); a cores-only reset restarts it [CONFIRMED-device] | S |
+| **Power-off, restart** | `gpio-poweroff`, ACT8931 MSTROFF via `system-power-controller`; restart via `GLB_SRST_FST` in the clock driver (Mario's `clk-rk3026.c` uses `GLB_SRST_SND`) | power-off: `gpio-poweroff` on GPIO1_A2, active low, works on battery with no PMIC write [CONFIRMED-device]; MSTROFF untested [VERIFY]. Restart: SND and FST both reach the BootROM once the IMEM remap is off and the loader invalidates L1 [CONFIRMED-device]; both reset GPIO1 and drop the power hold, so on battery they power the book off (tried with SND); a cores-only reset restarts it [CONFIRMED-device] | S |
 | **cpufreq** | `cpufreq-dt`; `cpufreq-dt-platdev` creates the device for `operating-points-v2` without an allowlist | DTS: stock has one point, 912 MHz at 1.40 V; `cpu-supply` = ACT8931 DCDC3 **only with `active-semi,vsel-high`** | S |
 | **Suspend-to-RAM** | `arch/arm/mach-rockchip/pm.c` supports RK3288 only (its PMU does the work); there is **no suspend-to-RAM for any Cortex-A9 Rockchip** | a new `pm-rk3026` with SRAM code (DDR self-refresh, PLLs down, clock gates, VSEL low with VSET1 programmed beforehand over normal I²C). Without it `echo mem > /sys/power/state` falls back to s2idle (DDR and PLLs stay up) | L |
 | **IO domains** | `io-domain.c` | not needed: the RK3026 GRF has no IO-voltage-select registers | — |
@@ -141,7 +144,8 @@ update mode; only SPI panels with their own controller (`repaper`, `pixpaper`) a
 same IP as the RK3026's (same registers, interrupt bits, base and IRQ in ONYX's RK3128 kernels; RK3036 has no EBC), so one
 driver can serve both ([onyx-rc2-ebc `driver/other-controllers.md`](https://github.com/hsw/onyx-rc2-ebc/blob/main/driver/other-controllers.md) §8). The
 register-level description of the RK3026 EBC and a sketch of a minimal in-kernel driver are in
-[onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) (`driver/registers.md`, `driver/new-driver.md`).
+[onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) (`driver/registers.md`, `driver/new-driver.md`). Its clock tree must keep
+`hclk_ebc` (`hclk_disp_pre`) well above `dclk_ebc` (§0, "E-Ink under DRAM load").
 
 - **Precedent: `repaper`.** `drivers/gpu/drm/tiny/repaper.c` (in mainline since 2017, GPL-2.0+) drives Pervasive Displays
   e-paper panels over SPI as a plain DRM driver with **no new UAPI**: a `drm_simple_display_pipe`, XRGB8888 converted to 1 bit
