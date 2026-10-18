@@ -72,7 +72,9 @@ copied from its DTS section with the confidence of the underlying pin-table rows
   pull on all four and on the cover sensor GPIO1_B0, and the lines idle high: external pull-ups, DTS `bias-disable`. ADC keys on
   SARADC channel 3 (ok ≈ 505, menu ≈ 400 of 1023; may not be fitted; the datasheet gives the RK3026 only two ADC channels),
   ADC-key IRQ GPIO3_B3. [CONFIRMED GPIO keys and pulls; VERIFY ADC keys fitted]
-- Magnet sensor GPIO1_B0, falling edge (→ `gpio-keys` KEY_POWER or SW_LID) [CONFIRMED IRQ; hardware VERIFY]. Vibrator GPIO0_A2
+- Magnet (cover) sensor GPIO1_B0, active low: low for the whole time the cover is closed, high when open (mainline `gpio-keys`
+  SW_LID) [CONFIRMED-device]. Opening the cover also pulls the power key line GPIO1_A4 low for about 150 ms, with nothing
+  touching the key: a hardware wake on opening, seen on the stock and the mainline kernel [CONFIRMED-device]. Vibrator GPIO0_A2
   active low [CONFIRMED motor fitted]. Status LED GPIO2_B7 active high [STRONG]. Frontlight PWM0 (GPIO0_D2), active high, no enable
   GPIO [STRONG].
 - RTL8723BU on USB host (usb20_host), power enable GPIO1_A5 **active low** (a `regulator-fixed` with `gpio` low-active, or a USB
@@ -173,13 +175,18 @@ Keys on pcb V1.73 (the board data is rewritten at boot for "v17x" boards; [`boar
 - ONYX runtime controls in `/sys/devices/platform/rk29-keypad/`: `key_switching` (case 0, the boot default, makes the left page key
   report KEY_BACK; case 1 makes it PAGE_UP), `touchkeyena`/`touchkeydis`, `vibrator` (50 ms in-kernel buzz per key)
   ([`kernel/sysfs-attributes.md`](kernel/sysfs-attributes.md)).
-- The magnet sensor on GPIO1_B0 (falling edge, wake-enabled) injects KEY_POWER when the system is not in mem suspend.
+- The magnet sensor on GPIO1_B0 (falling edge, wake-enabled) injects KEY_POWER when the system is not in mem suspend. On the
+  device a cover close gives three KEY_POWER presses within 0.26 s (software, from this handler); a cover open gives one
+  `play` IRQ and KEY_POWER press, from the hardware pulse on GPIO1_A4 above [CONFIRMED-device]. A mainline kernel sees only
+  SW_LID on a close, so sleeping on a close is up to userspace there.
 
 Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 - PWM0 on GPIO0_D2, `bl_ref = 1` (duty ∝ brightness), min 0, max 255, `brightness_mode = LINE`, `delay_ms = 0`, `pre_div = 0` →
   driver default 1000. **No BL_EN GPIO** (the Rockchip reference board had one). Sysfs: `/sys/class/backlight/rk28_bl/`.
 - Suspend: PWM0 is taken as a GPIO output low, mdelay(5), freed; resume: mdelay(6), back to PWM. In the vendor "idle" suspend the
   frontlight is left as it is.
+- Device check (stock and mainline `pwm-backlight` with a 1 ms period, 256 linear levels): 0 is fully dark, the steps are
+  visible across the range, and with PWM0 disabled and the pin still muxed to PWM the light stays dark [CONFIRMED-device].
 
 ## Asked for, not in our sources
 
@@ -187,7 +194,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
   TPS65185 VDDH divider (the waveform asks for VGH 25 V); see [`panel/README.md`](panel/README.md).
 - TPS65185 PWR_GOOD / nINT wiring (the PG register is readable, so a GPIO is not needed).
 - The frontlight PWM frequency (only `pre_div = 0` → driver default 1000 is known).
-- Whether the `ok`/`menu` ADC keys and a Hall sensor are fitted on the RC2 shell (22 magnet IRQs on stock suggest the sensor is).
+- Whether the `ok`/`menu` ADC keys are fitted on the RC2 shell. (The Hall sensor is fitted: see the keypad section.)
 - The role of GPIO2_B4 (`lcd_d10`) in suspend (probably a left-over touch reset of the Rockchip reference board, which resets its
   touch controller on that pin) [STRONG], the LED colours behind GPIO2_B7. (GPIO0_A3 = ACT8931 VSEL is now [STRONG], see
   [`pmic/README.md`](pmic/README.md) §1.4.)

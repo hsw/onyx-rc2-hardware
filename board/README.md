@@ -52,7 +52,9 @@ platform `gpio_to_irq()` is the identity, so `/proc/interrupts` shows GPIO IRQs 
   The ONYX `act8931_i2c_suspend` writes four suspend set-points (pcb-dependent), and resume restores nothing [STRONG].
 - **The magic IRQ is a magnet sensor that presses POWER.** The IRQ is GPIO1_B0, falling edge, wake-enabled. When the system is not in
   mem suspend, the handler injects KEY_POWER down/up. Stock counted 22 such IRQs in one boot (`/proc/interrupts`)
-  [STRONG; hardware VERIFY].
+  [STRONG]. Device check: the sensor line stays low while the cover is closed; opening the cover also pulses the power key
+  line GPIO1_A4 low for about 150 ms in hardware, so stock wakes on opening through the power key and sleeps on closing
+  through this handler [CONFIRMED-device].
 - **ONYX `idle` suspend state:** `/sys/power/state` accepts `idle` (pm_states[2]). Only in that state are the touch IRQ (GPIO1_A0 on
   v17x) and the ADC-key IRQ (GPIO3_B3) armed as wake sources [STRONG]. Details: [`../power/README.md`](../power/README.md).
 - **Section 8 (other ONYX patches):**

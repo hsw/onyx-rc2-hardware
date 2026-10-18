@@ -48,7 +48,9 @@ What the runs showed [CONFIRMED-device unless marked]:
 - **Restart:** the mainline `GLB_SRST_SND` handler, `GLB_SRST_FST` and a dw-wdt reset all restart through the BootROM (microSD
   first) and keep DDR, provided the IMEM remap is off and the first stage invalidates L1, since the Cortex-A9 keeps L1 lines
   over a warm reset ([`../soc/README.md`](../soc/README.md) §4.5). After a panic and a watchdog reset the ramoops buffer
-  (0x7ff40000) still holds the panic log.
+  (0x7ff40000) still holds the panic log. **On battery** the mainline restart switches the book off instead (LED dark, ramoops
+  empty on the next boot), while the stock kernel restarts on battery. The stock restart path leaves GPIO0-3 out of its
+  module reset; the likely cause is that the global reset drops the power hold GPIO1_A2 [VERIFY].
 - **Power-off:** `gpio-poweroff` on the power hold GPIO1_A2 (active low) switches the book off on battery; no PMIC write is
   needed. With USB power the ACT8931 keeps the board up, so the kernel waits with the line low and the book goes off when
   the cable is pulled ([`../power/README.md`](../power/README.md) §5).
@@ -91,7 +93,7 @@ What the runs showed [CONFIRMED-device unless marked]:
 | **PWM, SPI, DMA, UART, timer, GPIO** | `pwm-rockchip` (`rk2928`, no polarity), `spi-rockchip`, `pl330`, `dw-apb-uart`, `rockchip,rk3036-timer`, `gpio-rockchip` | DTS only (the frontlight is active high, no polarity needed). The Cortex-A9 global timer and TWD PPIs are `IRQ_TYPE_EDGE_RISING` [CONFIRMED-device] | — |
 | **Watchdog** | `snps,dw-wdt` | DTS; works on the RC2, its reset restarts through the BootROM with DDR kept [CONFIRMED-device] | — |
 | **Reboot flags** | `syscon-reboot-mode` (as `rk3036.dtsi`, offset 0x1d8) | DTS: `mode-bootloader = <BOOT_BL_DOWNLOAD>` (the RC2 loader knows LOADER and RECOVER only), `mode-recovery`; mainline's `mode-normal` 0x5242C300 (stock writes 0) is an unknown value to the stock loader and boots normally [STRONG, loader code] | S |
-| **Power-off, restart** | `gpio-poweroff`, ACT8931 MSTROFF via `system-power-controller`; restart via `GLB_SRST_FST` in the clock driver (Mario's `clk-rk3026.c` uses `GLB_SRST_SND`) | power-off: `gpio-poweroff` on GPIO1_A2, active low, works on battery with no PMIC write [CONFIRMED-device]; MSTROFF untested [VERIFY]. Restart: SND and FST both reach the BootROM once the IMEM remap is off and the loader invalidates L1 [CONFIRMED-device] | S |
+| **Power-off, restart** | `gpio-poweroff`, ACT8931 MSTROFF via `system-power-controller`; restart via `GLB_SRST_FST` in the clock driver (Mario's `clk-rk3026.c` uses `GLB_SRST_SND`) | power-off: `gpio-poweroff` on GPIO1_A2, active low, works on battery with no PMIC write [CONFIRMED-device]; MSTROFF untested [VERIFY]. Restart: SND and FST both reach the BootROM once the IMEM remap is off and the loader invalidates L1 [CONFIRMED-device]; on battery the SND restart powers the book off (cause [VERIFY]) | S |
 | **cpufreq** | `cpufreq-dt`; `cpufreq-dt-platdev` creates the device for `operating-points-v2` without an allowlist | DTS: stock has one point, 912 MHz at 1.40 V; `cpu-supply` = ACT8931 DCDC3 **only with `active-semi,vsel-high`** | S |
 | **Suspend-to-RAM** | `arch/arm/mach-rockchip/pm.c` supports RK3288 only (its PMU does the work); there is **no suspend-to-RAM for any Cortex-A9 Rockchip** | a new `pm-rk3026` with SRAM code (DDR self-refresh, PLLs down, clock gates, VSEL low with VSET1 programmed beforehand over normal I²C). Without it `echo mem > /sys/power/state` falls back to s2idle (DDR and PLLs stay up) | L |
 | **IO domains** | `io-domain.c` | not needed: the RK3026 GRF has no IO-voltage-select registers | — |
