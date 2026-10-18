@@ -419,8 +419,8 @@ mux/divider, or check with one write first [VERIFY].
   (DSMPD = 1): `Fout = 24 MHz × FBDIV / REFDIV / POSTDIV1 / POSTDIV2`; fractional mode (DSMPD = 0) adds FRAC / 2^24 to
   FBDIV. The VCO is `24 MHz / REFDIV × FBDIV`, before the two post dividers.
 - Limits, DS V1.2 §4.6 Table 17 (pp. 56–57) [CONFIRMED-src]: input 1–800 MHz (fractional mode 10–800), **VCO 600–2400
-  MHz**, output 12–2400 MHz, 24-bit fraction; lock time 1000 input-clock cycles typical, 1500 maximum (41.7 / 66.7 µs at
-  24 MHz, REFDIV 1); output duty cycle 48–52 % for even and 47–53 % for odd dividers. Table 10 (p. 53) gives the maximum
+  MHz**, output 12–2400 MHz, 24-bit fraction; lock time 41.7 µs typical, 66.7 µs maximum at 24 MHz, REFDIV 1 (the table),
+  or 1000 / 1500 input-clock cycles (its footnote; 1500 cycles at 24 MHz would be 62.5 µs); output duty cycle 48–52 % for even and 47–53 % for odd dividers. Table 10 (p. 53) gives the maximum
   PLL rates at 1.1 V / 25 °C (in brackets 1.21 V / −40 °C and 0.99 V / 125 °C): ARM PLL 1530 (1960, 800), DDR PLL 1390
   (1690, 800), codec PLL 1030 (1380, 600), general PLL 1010 (1350, 600) MHz. The stock VCOs below (APLL 1824, DPLL 1584,
   CPLL 640, GPLL 768 MHz) are all inside the VCO range; CPLL's sits near its 600 MHz floor.

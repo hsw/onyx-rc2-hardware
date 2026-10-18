@@ -164,7 +164,7 @@ multimeter: the register contents and the datasheet curve are enough.
   maximum [CONFIRMED-src].
 - **nIRQ is not wired to a readable SoC GPIO.** nIRQ is an open-drain output (DS p. 5, p. 27). With the charger-input
   interrupt armed (INCON and INDIS in 0x79, INSTAT in 0x78), the input levels of all four GPIO banks were sampled for
-  600 s while the USB cable was pulled and plugged again; the charger saw 5 input events (CSTATE and INSTAT changed), no
+  600 s while the USB cable was pulled and plugged again; the charger saw 5 input events (CSTATE in 0x7A changed), no
   input pin moved [STRONG, device test]. Either nIRQ is not connected or it goes to a pin without a pull-up. The stock
   kernel requests no ACT8931 interrupt either ([`../board/README.md`](../board/README.md) §2); a driver has to poll.
 - **Which part.** Both datasheet editions list one ordering code, **ACT8931AQJ633-T** (TQFN55-40, "Advanced PMU for
