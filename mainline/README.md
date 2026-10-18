@@ -70,12 +70,16 @@ What the runs showed [CONFIRMED-device unless marked]:
   0x3043). A cores-only restart keeps the CRU state, so the next boot's SD clock, parented on CPLL during card
   identification, is dead and the card is not found. The kernel has to power the PLLs up at clock init and before a
   restart; with that, unload then restart came back 9 times out of 9.
-- **E-Ink under DRAM load (open):** with an out-of-tree EBC driver, a CPU loop that streams memory (`dd bs=4M`, far beyond the
-  L2) makes the panel show grey noise or streaked bands on page turns, while every EBC scan completes all 38 frames and the
-  driver's image is normal; the same loop with a 16 KiB buffer (L1-resident) leaves the panel crisp, so DRAM traffic is the
-  trigger. Not cured by any NoC QoS priority (EBC port 0xF, LCDC1 0xF, CPU ports already 0; [`../soc/README.md`](../soc/README.md)
-  §1.4), by moving the EBC's AXI NIU clock (`aclk_lcdc1_src`) from 132 to about 213 MHz, or by DDR 396 instead of 300 MHz.
-  The stock kernel under the same load has not been tried yet [VERIFY].
+- **E-Ink under DRAM load: the EBC's AHB fetch clock.** With an out-of-tree EBC driver, a CPU loop that streams memory
+  (`dd bs=4M`, far beyond the L2) made the panel show grey noise or streaked bands on page turns, while every EBC scan
+  completed all 38 frames and the driver's image was normal; with a 16 KiB buffer (L1-resident) the panel stayed crisp, so
+  DRAM traffic is the trigger. The EBC fetches its images over AHB, clocked by `hclk_ebc` = `hclk_disp_pre`
+  (CLKSEL_CON30, CRU+0xbc), which the mainline clock setup leaves at GPLL / 1 = **132 MHz** (stock: 256 MHz, GPLL 768 / 3).
+  Raising it live to about 213 MHz (CPLL / 3) made all 14 page turns under the same load crisp, in two series; 132 MHz in
+  the same boot gave garbage [CONFIRMED-device; starvation of the AHB fetch as the mechanism STRONG]. Not the cause: NoC QoS
+  priorities (EBC port 0xF, LCDC1 0xF, CPU ports already 0; [`../soc/README.md`](../soc/README.md) §1.4), the AXI NIU clock
+  `aclk_lcdc1_src` (132 → about 213 MHz), DDR 396 instead of 300 MHz. A board kernel should set `hclk_disp_pre` to the
+  stock 256 MHz, or at least well above `dclk_ebc` (160 MHz).
 
 ## Summary
 

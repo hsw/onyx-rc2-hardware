@@ -33,7 +33,7 @@ MD5 `bce0d3914e8acabb494685159fc9a141`) on its support page: <https://onyx-boox.
 | Keys | power, page up, page down, back on GPIOs; two ADC keys in the table (`ok`, `menu`), probably not fitted | below |
 | Frontlight | PWM0 (GPIO0_D2), active high, no enable GPIO | below |
 | Battery | Li-ion, **CW2015** fuel gauge @ i2c0 0x62; USB-only charging (the ACT8931's own charger) | [`board/README.md`](board/README.md) §3, [`power/README.md`](power/README.md) §3, [`pmic/README.md`](pmic/README.md) |
-| Mainline Linux | nothing for RK3026 in v7.2. Mario Rugiero's RK3026 kernel ([Oppen/linux](https://github.com/Oppen/linux) `boox-c67ml`), rebased onto v7.1.13 with twelve RC2 patches, boots on the RC2 from microSD: 2 CPUs, USB console and mass storage, watchdog, reboot, power-off. Open: E-Ink garbage under DRAM load | [`mainline/README.md`](mainline/README.md) |
+| Mainline Linux | nothing for RK3026 in v7.2. Mario Rugiero's RK3026 kernel ([Oppen/linux](https://github.com/Oppen/linux) `boox-c67ml`), rebased onto v7.1.13 with twelve RC2 patches, boots on the RC2 from microSD: 2 CPUs, USB console and mass storage, watchdog, reboot, power-off. E-Ink garbage under DRAM load traced to the EBC's AHB fetch clock (`hclk_disp_pre` 132 MHz; stock 256) | [`mainline/README.md`](mainline/README.md) |
 | RTC | HYM8563 @ i2c0 0x51, IRQ GPIO1_B3 | [`board/README.md`](board/README.md) §3 |
 | Other | vibration motor (GPIO0_A2), status LED (GPIO2_B7), magnet (Hall) sensor that acts as POWER (GPIO1_B0), SoC audio codec without speaker or jack on V1.73 | [`board/README.md`](board/README.md) §6, §8 |
 
@@ -220,7 +220,7 @@ Frontlight ([`board/README.md`](board/README.md) §3, §4) [STRONG]:
 | [`device/README.md`](device/README.md), [`device/proc/`](device/proc/) | device facts: identity, partition map, Rockusb, the eMMC boot partitions and the user area below `parameter`, the stock loader (what it touches, its reset, what it checks on an ANDROID! image), image formats, ramdisk, raw `/proc` and sysfs excerpts |
 | [`soc/README.md`](soc/README.md) | the RK3026 for a device tree: MMIO map, USB OTG (DWC2) parameters, IMEM (address-0 remap, usage by offset), interrupts (`GIC_SPI n−32`), NoC QoS ports, CRU (PLLs measured, stock bus clocks, clocks/gates/resets of the RC2 blocks), GRF bits that differ from RK3036, reboot flags, CPU1 start, warm resets, pin mux and pulls, datasheet contradictions resolved, the stock DDR init and the stock kernel's 396 MHz set |
 | [`pmic/README.md`](pmic/README.md) | ACT8931, TPS65185 and CW2015 registers read on the device: the stock voltage-table bug, VSEL, charger status, the TPS65185 sequence and PG, DTS consequences |
-| [`mainline/README.md`](mainline/README.md) | an out-of-tree RK3026 kernel booted on the RC2 (what works, the RC2 patches, DDR 396, the E-Ink-under-load issue); mainline Linux v7.2 status per block and per board chip: what exists, what is missing, a sensible order |
+| [`mainline/README.md`](mainline/README.md) | an out-of-tree RK3026 kernel booted on the RC2 (what works, the RC2 patches, DDR 396, the EBC AHB fetch clock under memory load); mainline Linux v7.2 status per block and per board chip: what exists, what is missing, a sensible order |
 | [`gpu/README.md`](gpu/README.md), [`gpu/probe/`](gpu/probe/) | Mali-400 MP2 EGL / OpenGL ES 1.1 and 2.0 measured on the device: configs, extensions, limits, precision, entry points, checks, GPU memory, Chromium 83 workarounds; the probe source |
 
 All addresses refer to the stock RC2 kernel built 2017-11-07 (firmware 1.8.2, sha256

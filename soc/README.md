@@ -433,6 +433,9 @@ mux/divider, or check with one write first [VERIFY].
   (640 asked), so the CPLL-side numbers above (`hclk_disp_pre` 320 from CPLL) are from the Android boot and the choice of
   parent depends on the CPLL state at probe [VERIFY]. The FlashData values (GPLL 132, both display clocks GPLL / 1) are what
   a kernel that never retunes GPLL keeps.
+- **The EBC fetches its images over AHB**, so `hclk_disp_pre` / `hclk_ebc` (CLKSEL_CON30), not `aclk_lcdc1` (CON31), sets its
+  fetch bandwidth. At the FlashData 132 MHz the panel shows garbage under CPU memory load; about 213 MHz cures it
+  ([`../mainline/README.md`](../mainline/README.md) §0) [CONFIRMED-device].
 
 ### 3.3 Clocks, gates and resets of the RC2 blocks
 
