@@ -537,6 +537,12 @@ from DS V1.2 Tables 11–13 (pp. 53–55): maximum at 1.1 V / 25 °C, in bracket
   312 and 504 at 1.20, 816 at 1.25, 1008 at 1.35 V [CONFIRMED-src]. The vendor `mach-rk3026/dvfs.c` notes "avdd_com &
   vdd_arm short circuit", so the logic shares the ARM rail [STRONG]. Neither datasheet lists a temperature sensor (no
   TS-ADC), so nothing on the chip reports the die temperature.
+- **Measured undervolt limit (one RC2, room temperature).** With the CPU rate switched by hand and DCDC3 set in 50 mV steps,
+  10 minutes of CPU and storage load per point: 216–816 MHz were stable at every step down to **1.20 V** (the lowest value
+  tried, VSET selector 0x18); 912 MHz was stable down to **1.25 V** and **hung at 1.20 V** (a kernel oops with a bad
+  program counter, then a watchdog reset). Stock firmware runs 912 MHz at 1.40 V, so the single stock point has about 150 mV
+  of headroom, but 912 MHz at 1.25 V has none on this chip. 24 °C ambient, no data corruption seen at any passing point;
+  one specimen, no temperature sweep, points below 1.20 V and rates above 912 MHz not tested [STRONG].
 - **L2 cache** (PL310 r3p3, `CACHE_ID` 0x4100c0c9). The stock kernel prints `AUX_CTRL 0x76030001` [CONFIRMED-device]: 16
   ways × 16 KiB = 256 KiB, round-robin, instruction and data prefetch, early BRESP, full line of zeros. The vendor
   `l2_cache_init` (RY `mach-rk3026/common.c`) forces these AUX bits once at boot and sets the tag RAM latency to 0x000 (1
