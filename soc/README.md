@@ -542,7 +542,22 @@ from DS V1.2 Tables 11–13 (pp. 53–55): maximum at 1.1 V / 25 °C, in bracket
   tried, VSET selector 0x18); 912 MHz was stable down to **1.25 V** and **hung at 1.20 V** (a kernel oops with a bad
   program counter, then a watchdog reset). Stock firmware runs 912 MHz at 1.40 V, so the single stock point has about 150 mV
   of headroom, but 912 MHz at 1.25 V has none on this chip. 24 °C ambient, no data corruption seen at any passing point;
-  one specimen, no temperature sweep, points below 1.20 V and rates above 912 MHz not tested [STRONG].
+  one specimen, no temperature sweep [STRONG].
+- **Margin below Rockchip's voltages (same RC2, 24 °C).** A second run stepped DCDC3 one selector at a time (25 mV below
+  1.20 V) down from the SDK voltage of each rate, 5 minutes of CPU and storage load per point, then 30 minutes at the last
+  passing point; the boot loader raised DCDC3 back to 1.40 V after each watchdog reset, which made points down to 0.80 V
+  safe to run unattended:
+
+  | Rate | SDK voltage | Lowest 30-min pass | First failure |
+  |---|---|---|---|
+  | 912 MHz | 1.25 V | 1.25 V | 1.20 V: hang |
+  | 816 MHz | 1.20 V | 1.175 V | 1.15 V: kernel oops after about 2 minutes |
+  | 504 MHz | 1.00 V | 0.95 V | 0.925 V: one corrupted checksum |
+  | 312 MHz | 0.95 V | not run above 0.825 V | 0.825 V: passed 5 minutes, one corrupted checksum within 30 minutes; 0.80 V hangs |
+
+  So the SDK table holds on this chip with 50–125 mV to the first failure, least at 816 MHz (50 mV) and 912 MHz (50 mV).
+  Below the margin the first symptom is often silent data corruption, before any hang, and a 5-minute pass is not a
+  floor: only the 30-minute points are. Nominal selector voltages, the rail not measured; one specimen [STRONG].
 - **L2 cache** (PL310 r3p3, `CACHE_ID` 0x4100c0c9). The stock kernel prints `AUX_CTRL 0x76030001` [CONFIRMED-device]: 16
   ways × 16 KiB = 256 KiB, round-robin, instruction and data prefetch, early BRESP, full line of zeros. The vendor
   `l2_cache_init` (RY `mach-rk3026/common.c`) forces these AUX bits once at boot and sets the tag RAM latency to 0x000 (1
