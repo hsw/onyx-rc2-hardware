@@ -288,9 +288,9 @@ the RK2928 offsets (0x10128088/188/388 decode nothing on the RK3026: a read ther
 
 | PRIORITY register | Master | Vendor kernel writes | Mainline kernel reads (reset or loader value) |
 |---|---|---|---|
-| 0x1012a008 | CPU0 | 0 | 0 |
-| 0x1012a088 | CPU1 write | 0 | 0 |
-| 0x1012a108 | CPU1 read | 0 | 0 |
+| 0x1012a008 | CPU0 | 0 | 0x8 after a power cycle; 0 after an Android boot and warm resets |
+| 0x1012a088 | CPU1 write | 0 | **0xF** after a power cycle; 0 after an Android boot and warm resets |
+| 0x1012a108 | CPU1 read | 0 | **0xF** after a power cycle; 0 after an Android boot and warm resets |
 | 0x1012c008 | peripherals | 0 | 0x4 (mode 3) |
 | 0x1012d008 | GPU | 0x9 (2, 1) | 0xD |
 | 0x1012e008 | VPU | — | 0x9 |
@@ -305,9 +305,19 @@ the RK2928 offsets (0x10128088/188/388 decode nothing on the RK3026: a read ther
 - The vendor writes are the whole of `cpu_axi_init()` in RY `mach-rk3026/common.c:22-34`, run once at boot; the EBC's own
   port is never set. The stock kernel's CPU ports read 0 [CONFIRMED-device]. No other arbitration knob per master was
   found in the uPCTL or the GRF registers of RY [STRONG].
+- **A warm reset keeps these values.** After the stock kernel has run, a warm reset (`reboot`, `adb reboot`) into
+  another kernel leaves the CPU ports at the vendor's 0; only a power cycle (a PMIC power-off and power-on) brings back
+  the loader's 0x8 / 0xF / 0xF [CONFIRMED-device]. So a mainline reading of 0 says only that stock ran since the last
+  power cycle. **The CPU1 ports at 0xF are what starves the EBC fetch under CPU memory load** (§3.6); a mainline kernel
+  must write 0 to all three CPU ports at boot, as `cpu_axi_init()` does.
 - **Reading 0x1012f008 on the stock kernel hangs the SoC** [CONFIRMED-device]: `devmem 0x1012f008` never returns and the
   system stops answering. Under mainline the same block reads fine. Most likely the display-side NIU or its power domain is
   clocked off at that moment on stock [VERIFY]; read the 0x1012f000 block only with the display path's clocks on.
+- A second stock-kernel read (2026-10-20, Android idle, one aligned 32-bit read per word through `/dev/mem`)
+  [CONFIRMED-device]: `0x1012f088` (EBC) and `0x1012d000` (the GPU port's first word) hang the SoC the same way. The CPU
+  ports `0x1012a000`-`0x1012a11c`, the peripherals port `0x1012c000`-`0x1012c01c` and the memory scheduler
+  `0x10128000`-`0x1012803c` read back. Stock: the CPU ports 0 (the vendor value), the peripherals port `0x1012c008`
+  0 (mainline after the same Android boot: 0x4).
 
 ## 2. Interrupts
 
@@ -580,10 +590,23 @@ fetch bandwidth. At the FlashData 132 MHz the panel shows garbage under CPU memo
 | 0x8200 | GPLL 768 / 3 | 256 MHz | stock kernel booted from microSD; mainline with the stock bus clocks | clean (mainline) |
 | 0x0100 | CPLL 640 / 2 | 320 MHz | stock kernel after an Android boot (§3.2) | not tested under load |
 
-- No effect on the garbage: the EBC's own QoS port (0x1012f088, reads 0x8) raised to 0xF, LCDC1's to 0xF; the CPU ports,
-  which already read 0, the vendor's value (§1.4); `aclk_lcdc1_src` (the EBC's AXI clock, CLKSEL_CON31) raised from 132 to
+- No effect on the garbage under that `dd bs=4M` load: the EBC's own QoS port (0x1012f088, reads 0x8) raised to 0xF,
+  LCDC1's to 0xF; the CPU ports, which read 0 in that boot (so the stock kernel had run since the last power cycle,
+  §1.4); `aclk_lcdc1_src` (the EBC's AXI clock, CLKSEL_CON31) raised from 132 to
   ≈ 213 MHz; DDR at the stock 396 MHz instead of 300 [CONFIRMED-device].
-- So keep `hclk_disp_pre` well above `dclk_ebc` (160 MHz); the stock 256 MHz is the safe choice [STRONG].
+- **The CPU1 QoS ports are the rest of the cause** (2026-10-20) [CONFIRMED-device]. After a power cycle the loader
+  leaves the CPU QoS PRIORITY words at 0x8 (CPU0) and **0xF (CPU1 write and read)** (§1.4). Mainline at the stock bus
+  clocks (CLKSEL_CON30 0x8200 = 256 MHz, GPLL 768, DDR 396, ARM 600, `dclk_ebc` 160) then garbles a partial update
+  when one or two `cat` loops copy a 6 MB tmpfs file during the scan, or two read-only `cat file > /dev/null` loops
+  run: streaks over the whole changed area, while the driver's model of the panel stays correct and the scan
+  completes (38 of 38 frames, 454 ms); two `dd if=/dev/zero of=/dev/null bs=4M` loops leave the changed area undriven.
+  Writing **0 to `0x1012a088` and `0x1012a108`** cures it under one and two copy loops and an 8 MiB user-space copy
+  loop, also with the load pinned to CPU0; writing 0xF back brings the garbage back; 0 on the CPU0 port alone does not
+  help. Not a cure: `hclk_disp_pre` at 320 MHz (0x0100); the EBC and LCDC1 QoS ports at 0xF (they turn the streaks
+  into coarse blocks). The stock kernel writes 0 to the CPU ports at boot and stays clean under the same loads, partial
+  and full updates. So a board kernel needs both: `hclk_disp_pre` at 256 MHz and the three CPU ports at 0.
+- So keep `hclk_disp_pre` well above `dclk_ebc` (160 MHz); the stock 256 MHz cures the `dd bs=4M` load, the heavier
+  loads above also need the CPU ports at 0 [CONFIRMED-device].
 
 ### 3.7 SD/MMC: no internal divide-by-two
 

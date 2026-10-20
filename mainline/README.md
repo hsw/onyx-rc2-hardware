@@ -78,11 +78,13 @@ What the runs showed [CONFIRMED-device unless marked]:
   CRU+0xbc), which the mainline clock setup leaves at GPLL / 1 = **132 MHz** (stock: 256 MHz, GPLL 768 / 3; 320 MHz from
   CPLL after an Android boot). Raising it live to about 213 MHz (CPLL / 3) made all 14 page turns under the same load crisp,
   in two series; 132 MHz in the same boot gave garbage [CONFIRMED-device; starvation of the AHB fetch as the mechanism
-  STRONG]. Not the cause: NoC QoS priorities (EBC port 0xF, LCDC1 0xF, CPU ports already 0;
+  STRONG]. Not the cause of that case: NoC QoS priorities (EBC port 0xF, LCDC1 0xF; the CPU ports read 0 in that boot,
   [`../soc/README.md`](../soc/README.md) §1.4), the AXI NIU clock `aclk_lcdc1_src` (132 → about 213 MHz), DDR 396 instead of
   300 MHz. A board kernel should set `hclk_disp_pre` to the stock 256 MHz, or at least well above `dclk_ebc` (160 MHz). A
   kernel that sets the stock bus clocks (GPLL 768 MHz, `hclk_disp_pre` 256 MHz) gave 14 of 14 loaded and 7 of 7 idle page
-  turns crisp [CONFIRMED-device]. Register values: [`../soc/README.md`](../soc/README.md) §3.6.
+  turns crisp [CONFIRMED-device]. Heavier loads (copy loops) still garble at 256 MHz after a power cycle, because the
+  loader leaves the CPU1 QoS ports at 0xF; writing 0 to the three CPU ports (the vendor kernel's value) cures that
+  [CONFIRMED-device]. Register values: [`../soc/README.md`](../soc/README.md) §1.4, §3.6.
 
 ## Summary
 
