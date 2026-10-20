@@ -63,7 +63,7 @@ Confidence marks on this page:
 ```
 
 - **Port map** from RY `mach-rk3026/include/mach/cpu_axi.h`; the full table with values is §2.2 [CONFIRMED-src].
-- **CPU ports.** The PL310 has two AXI master ports. The QoS ports named "CPU1W"/"CPU1R" carry the cluster's DRAM traffic
+- **CPU ports.** The PL310 can have one or two AXI master ports (how many this one has is not read). The QoS ports named "CPU1W"/"CPU1R" carry the cluster's DRAM traffic
   whichever core runs the load: with a copy loop pinned to core 0, zeroing only those two cures the underrun, and
   zeroing only "CPU0" does not (§3) [CONFIRMED-device]. So "CPU1" is not core 1. That they are the write and read
   generators of the PL310 port the DRAM traffic leaves through (the vendor kernel does not set the PL310 address filter),
