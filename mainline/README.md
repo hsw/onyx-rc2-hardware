@@ -71,20 +71,16 @@ What the runs showed [CONFIRMED-device unless marked]:
   0x3043). A cores-only restart keeps the CRU state, so the next boot's SD clock, parented on CPLL during card
   identification, is dead and the card is not found. The kernel has to power the PLLs up at clock init and before a
   restart; with that, unload then restart came back 9 times out of 9.
-- **E-Ink under DRAM load: the EBC's AHB fetch clock.** With an out-of-tree EBC driver, a CPU loop that streams memory (`dd
-  bs=4M`, far beyond the L2) made the panel show grey noise or streaked bands on page turns, while every EBC scan completed
-  all 38 frames and the driver's image was normal; with a 16 KiB buffer (L1-resident) the panel stayed crisp, so DRAM
-  traffic is the trigger. The EBC fetches its images over AHB, clocked by `hclk_ebc` = `hclk_disp_pre` (CLKSEL_CON30,
-  CRU+0xbc), which the mainline clock setup leaves at GPLL / 1 = **132 MHz** (stock: 256 MHz, GPLL 768 / 3; 320 MHz from
-  CPLL after an Android boot). Raising it live to about 213 MHz (CPLL / 3) made all 14 page turns under the same load crisp,
-  in two series; 132 MHz in the same boot gave garbage [CONFIRMED-device; starvation of the AHB fetch as the mechanism
-  STRONG]. Not the cause of that case: NoC QoS priorities (EBC port 0xF, LCDC1 0xF; the CPU ports read 0 in that boot,
-  [`../soc/README.md`](../soc/README.md) §1.4), the AXI NIU clock `aclk_lcdc1_src` (132 → about 213 MHz), DDR 396 instead of
-  300 MHz. A board kernel should set `hclk_disp_pre` to the stock 256 MHz, or at least well above `dclk_ebc` (160 MHz). A
-  kernel that sets the stock bus clocks (GPLL 768 MHz, `hclk_disp_pre` 256 MHz) gave 14 of 14 loaded and 7 of 7 idle page
-  turns crisp [CONFIRMED-device]. Heavier loads (copy loops) still garble at 256 MHz after a power cycle, because the
-  loader leaves the CPU1 QoS ports at 0xF; writing 0 to the three CPU ports (the vendor kernel's value) cures that
-  [CONFIRMED-device]. Register values: [`../soc/README.md`](../soc/README.md) §1.4, §3.6.
+- **E-Ink under DRAM load: the EBC's AHB fetch clock and the CPU QoS ports.** With an out-of-tree EBC driver, a CPU loop
+  that streams memory far beyond the L2 makes the panel show grey noise or streaks, while every scan completes all 38
+  frames and the driver's image is right; an L1-resident loop does not. Two causes, both needed
+  [CONFIRMED-device]: `hclk_ebc` = `hclk_disp_pre` (CLKSEL_CON30), which the mainline clock setup leaves at GPLL / 1 =
+  **132 MHz** (stock 256 MHz; ≈ 213 MHz live cured a `dd bs=4M` load, 14 of 14 page turns), and the CPU QoS ports, which
+  read 0x8 / **0xF / 0xF** after a power cycle (the vendor kernel writes 0; copy loops garble even at 256 MHz until they
+  are 0). A board needs `hclk_disp_pre` at 256 MHz and the CPU0, CPU1W, CPU1R and peripherals QoS
+  ports written to 0 at every boot; a mainline-based U-Boot for the RC2 now does the latter. Details:
+  [`../memory/README.md`](../memory/README.md) §3, §4; register values: [`../soc/README.md`](../soc/README.md) §1.4,
+  §3.6.
 
 ## Summary
 

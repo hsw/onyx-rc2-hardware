@@ -69,7 +69,8 @@ Confidence marks on this page:
   maximum (§3.5); the keys, the cover sensor and I2C2 run with the internal pull disabled (external pull-ups, DTS
   `bias-disable`).
 - **E-Ink under DRAM load:** the EBC needs a fast AHB clock: at `hclk_disp_pre` 132 MHz it drives garbage while the CPU
-  streams through DRAM, at 213 and 256 MHz it is clean (§3.6).
+  streams through DRAM, at 213 and 256 MHz it is clean (§3.6); and the CPU QoS ports at the vendor's 0, not the 0x8 / 0xF /
+  0xF they read after a power cycle (§1.4, [`../memory/README.md`](../memory/README.md)).
 - **SD/MMC:** the controllers are the RK2928 type, with no internal divide-by-two of the card clock (§3.7).
 - **DDR:** the stock kernel runs 396 MHz with the timings of the vendor `ddr.c` (§8.1); the Kepler boards carry a Samsung
   K4B4G1646E (DDR3L, 4 Gb ×16), CL6/CWL5 at that clock (§8.2).
@@ -286,38 +287,34 @@ From RY `arch/arm/mach-rk3026/include/mach/cpu_axi.h` (port bases) and `arch/arm
 limiter, 3 regulator), BANDWIDTH at +0x10 and SATURATION at +0x14; PRIORITY = `(h & 3) << 2 | (l & 3)`. These are **not**
 the RK2928 offsets (0x10128088/188/388 decode nothing on the RK3026: a read there is an external abort [STRONG]).
 
-| PRIORITY register | Master | Vendor kernel writes | Mainline kernel reads (reset or loader value) |
+| PRIORITY register | Master | Vendor kernel writes | After a power cycle |
 |---|---|---|---|
-| 0x1012a008 | CPU0 | 0 | 0x8 after a power cycle; 0 after an Android boot and warm resets |
-| 0x1012a088 | CPU1 write | 0 | **0xF** after a power cycle; 0 after an Android boot and warm resets |
-| 0x1012a108 | CPU1 read | 0 | **0xF** after a power cycle; 0 after an Android boot and warm resets |
-| 0x1012c008 | peripherals | 0 | 0x4 (mode 3) |
-| 0x1012d008 | GPU | 0x9 (2, 1) | 0xD |
-| 0x1012e008 | VPU | — | 0x9 |
+| 0x1012a008 | CPU0 | 0 | 0x8 |
+| 0x1012a088 | CPU1 write | 0 | **0xF** |
+| 0x1012a108 | CPU1 read | 0 | **0xF** |
+| 0x1012c008 | peripherals | 0 | 0x4 |
+| 0x1012d008 | GPU | 0x9 (2, 1) | — |
+| 0x1012e008 | VPU | — | — |
 | 0x1012f008 | LCDC1 | 0xF (3, 3) | 0xE |
 | 0x1012f088 | EBC | — | 0x8 |
 | 0x1012f108 | IEP | — | — |
-| 0x1012f188 | LCDC0 | 0xF (3, 3) | 0xE (mode 3) |
-| 0x1012f208 | CIF0 | — | 0x8 |
-| 0x1012f288 | RGA | — | 0x8 |
+| 0x1012f188 | LCDC0 | 0xF (3, 3) | — |
+| 0x1012f208 | CIF0 | — | — |
+| 0x1012f288 | RGA | — | — |
 | 0x10128014 | memory scheduler ReadLatency | 0x3f | 0x3F |
 
 - The vendor writes are the whole of `cpu_axi_init()` in RY `mach-rk3026/common.c:22-34`, run once at boot; the EBC's own
-  port is never set. The stock kernel's CPU ports read 0 [CONFIRMED-device]. No other arbitration knob per master was
-  found in the uPCTL or the GRF registers of RY [STRONG].
-- **A warm reset keeps these values.** After the stock kernel has run, a warm reset (`reboot`, `adb reboot`) into
-  another kernel leaves the CPU ports at the vendor's 0; only a power cycle (a PMIC power-off and power-on) brings back
-  the loader's 0x8 / 0xF / 0xF [CONFIRMED-device]. So a mainline reading of 0 says only that stock ran since the last
-  power cycle. **The CPU1 ports at 0xF are what starves the EBC fetch under CPU memory load** (§3.6); a mainline kernel
-  must write 0 to all three CPU ports at boot, as `cpu_axi_init()` does.
-- **Reading 0x1012f008 on the stock kernel hangs the SoC** [CONFIRMED-device]: `devmem 0x1012f008` never returns and the
-  system stops answering. Under mainline the same block reads fine. Most likely the display-side NIU or its power domain is
-  clocked off at that moment on stock [VERIFY]; read the 0x1012f000 block only with the display path's clocks on.
-- A second stock-kernel read (2026-10-20, Android idle, one aligned 32-bit read per word through `/dev/mem`)
-  [CONFIRMED-device]: `0x1012f088` (EBC) and `0x1012d000` (the GPU port's first word) hang the SoC the same way. The CPU
-  ports `0x1012a000`-`0x1012a11c`, the peripherals port `0x1012c000`-`0x1012c01c` and the memory scheduler
-  `0x10128000`-`0x1012803c` read back. Stock: the CPU ports 0 (the vendor value), the peripherals port `0x1012c008`
-  0 (mainline after the same Android boot: 0x4).
+  port is never set. No other arbitration knob per master was found in the uPCTL or the GRF registers of RY [STRONG].
+  Read on ML-RC2 after a power cycle, MODE 3 on every port read [CONFIRMED-device]. Values after a
+  warm reset, BANDWIDTH and SATURATION of every port, and what the fields mean (the Arteris FlexNoC QoS generator, as in
+  the RK3308 TRM): [`../memory/README.md`](../memory/README.md) §2.
+- **A warm reset keeps the CPU ports at what the last kernel wrote** (0 after the stock kernel); only a power cycle
+  brings back 0x8 / 0xF / 0xF [CONFIRMED-device]. **The CPU1 ports at 0xF starve the EBC fetch under CPU memory load**
+  (§3.6); a mainline boot must write the vendor values to CPU0, CPU1W, CPU1R and PERI
+  ([`../memory/README.md`](../memory/README.md) §3).
+- **Reads that hang the SoC under the stock kernel** [CONFIRMED-device]: `0x1012f008` (LCDC1), `0x1012f088` (EBC) and
+  `0x1012d000` (the GPU port's first word) never return and the system stops answering. The CPU ports, the peripherals
+  port and the memory scheduler read back; under mainline every port reads.
 
 ## 2. Interrupts
 
@@ -573,9 +570,11 @@ from DS V1.2 Tables 11–13 (pp. 53–55): maximum at 1.1 V / 25 °C, in bracket
   `l2_cache_init` (RY `mach-rk3026/common.c`) forces these AUX bits once at boot and sets the tag RAM latency to 0x000 (1
   cycle each) and the data RAM latency to **0x021** (setup 2, read 3, write 1 cycle; fields [2:0], [6:4], [10:8] hold
   cycles − 1), prefetch control 0x70000003, dynamic clock gating and standby; nothing changes them on a rate change
-  [CONFIRMED-src; the latency registers were not read under the stock kernel]. In mainline DT terms: `arm,tag-latency =
-  <1 1 1>`, `arm,data-latency = <3 1 2>` (read, write, setup). A kernel that keeps AUX as it finds it reads 0x46020001
-  (8 ways, 128 KiB, no prefetch) [CONFIRMED-device], so the cache size and prefetch must be set explicitly.
+  [CONFIRMED-src]. Read under the stock kernel: AUX 0x76030001, prefetch control 0x70000003, latencies 0x000 / 0x021
+  [CONFIRMED-device]. In mainline DT terms: `arm,tag-latency = <1 1 1>`, `arm,data-latency = <3 1 2>` (read, write,
+  setup). A kernel that keeps AUX as it finds it reads 0x46020001 (8 ways, 128 KiB, no prefetch) [CONFIRMED-device], so
+  the cache size and prefetch must be set explicitly; the measured cost and the DT properties:
+  [`../memory/README.md`](../memory/README.md) §5.
 
 ### 3.6 The EBC's fetch clock (`hclk_disp_pre`)
 
@@ -587,26 +586,17 @@ fetch bandwidth. At the FlashData 132 MHz the panel shows garbage under CPU memo
 |---|---|---|---|---|
 | 0x8000 | GPLL 132 / 1 | 132 MHz | FlashData; mainline before the fix | garbage, although the driver reports complete scans (38 of 38 frames, 454 ms) |
 | 0x0200 | CPLL 640 / 3 | ≈ 213 MHz | live test: one hiword write `0x9f000200` (bits 15 and 12:8 only) | clean |
-| 0x8200 | GPLL 768 / 3 | 256 MHz | stock kernel booted from microSD; mainline with the stock bus clocks | clean (mainline) |
-| 0x0100 | CPLL 640 / 2 | 320 MHz | stock kernel after an Android boot (§3.2) | not tested under load |
+| 0x8200 | GPLL 768 / 3 | 256 MHz | stock kernel booted from microSD; mainline with the stock bus clocks | clean under the `dd` load (mainline); copy loops also need the CPU QoS ports at 0 |
+| 0x0100 | CPLL 640 / 2 | 320 MHz | stock kernel after an Android boot (§3.2) | mainline, CPU QoS ports at reset: garbage under two copy loops, as at 256 MHz |
 
-- No effect on the garbage under that `dd bs=4M` load: the EBC's own QoS port (0x1012f088, reads 0x8) raised to 0xF,
-  LCDC1's to 0xF; the CPU ports, which read 0 in that boot (so the stock kernel had run since the last power cycle,
-  §1.4); `aclk_lcdc1_src` (the EBC's AXI clock, CLKSEL_CON31) raised from 132 to
-  ≈ 213 MHz; DDR at the stock 396 MHz instead of 300 [CONFIRMED-device].
-- **The CPU1 QoS ports are the rest of the cause** (2026-10-20) [CONFIRMED-device]. After a power cycle the loader
-  leaves the CPU QoS PRIORITY words at 0x8 (CPU0) and **0xF (CPU1 write and read)** (§1.4). Mainline at the stock bus
-  clocks (CLKSEL_CON30 0x8200 = 256 MHz, GPLL 768, DDR 396, ARM 600, `dclk_ebc` 160) then garbles a partial update
-  when one or two `cat` loops copy a 6 MB tmpfs file during the scan, or two read-only `cat file > /dev/null` loops
-  run: streaks over the whole changed area, while the driver's model of the panel stays correct and the scan
-  completes (38 of 38 frames, 454 ms); two `dd if=/dev/zero of=/dev/null bs=4M` loops leave the changed area undriven.
-  Writing **0 to `0x1012a088` and `0x1012a108`** cures it under one and two copy loops and an 8 MiB user-space copy
-  loop, also with the load pinned to CPU0; writing 0xF back brings the garbage back; 0 on the CPU0 port alone does not
-  help. Not a cure: `hclk_disp_pre` at 320 MHz (0x0100); the EBC and LCDC1 QoS ports at 0xF (they turn the streaks
-  into coarse blocks). The stock kernel writes 0 to the CPU ports at boot and stays clean under the same loads, partial
-  and full updates. So a board kernel needs both: `hclk_disp_pre` at 256 MHz and the three CPU ports at 0.
-- So keep `hclk_disp_pre` well above `dclk_ebc` (160 MHz); the stock 256 MHz cures the `dd bs=4M` load, the heavier
-  loads above also need the CPU ports at 0 [CONFIRMED-device].
+- No effect on the garbage under that `dd bs=4M` load at 132 MHz: the EBC's own QoS port (0x1012f088, reads 0x8) raised
+  to 0xF, LCDC1's to 0xF; `aclk_lcdc1_src` (the EBC's AXI clock, CLKSEL_CON31) raised from 132 to ≈ 213 MHz; DDR at the
+  stock 396 MHz instead of 300. The CPU QoS ports read 0 in that boot (the stock kernel had run since the last power
+  cycle, §1.4) [CONFIRMED-device].
+- **The clock is one of two causes.** After a power cycle the CPU1 QoS ports are at 0xF, and then copy loops garble the
+  glass at 256 MHz too, and at 320 MHz (0x0100); 0 on the CPU ports (the vendor value) cures it [CONFIRMED-device]. So a
+  board needs both: `hclk_disp_pre` well above `dclk_ebc` (160 MHz), the stock 256 MHz, and the CPU QoS ports at 0. The
+  runs, the cross-tests and the EBC's bandwidth: [`../memory/README.md`](../memory/README.md) §3, §4.
 
 ### 3.7 SD/MMC: no internal divide-by-two
 
@@ -798,6 +788,9 @@ What a warm reset does **not** clear, and what follows from it:
   is set. With a diagnostic kernel that kept the remap set and left data there, warm resets into itself died between
   frames; clearing the remap and zeroing IMEM 0x00–0x3f before every reset, and setting the remap only around the CPU1
   pulse, made every such reset come back with 2 CPUs [fix CONFIRMED-device; mechanism (CPU1 running loose in IMEM) STRONG].
+- **The CPU NoC QoS ports** (§1.4): they keep what the last kernel wrote (0 after the stock kernel) across the stock kernel's
+  restart and mainline's `GLB_SRST_SND` restarts; only a power cycle brings back 0x8 / 0xF / 0xF [CONFIRMED-device]
+  ([`../memory/README.md`](../memory/README.md) §2.2).
 - **Power.** With USB power, or after a core reset, the board stays powered. A reset that never reaches the BootROM
   therefore leaves the book "dead" (panel black, no USB, the power key ignored because nothing reads it) until the reset pinhole
   [CONFIRMED-device for the symptom; STRONG for the explanation].
@@ -896,9 +889,8 @@ the stock FIQ debugger on UART2 is therefore of little use.
 - The ARM PMU interrupt (SPI 86): shared or per core.
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
-  read under the stock kernel (§1.4).
+  read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).
 - CLKSEL23 write behaviour (one test write); EBC clock gating between updates.
-- The L2 latency registers (0x10138108/0x1013810c) under the stock kernel: RY's `l2_cache_init` says 0x000/0x021 (§3.5).
 - Whether the vendor clock code picks the parent of `hclk_disp_pre` and I2S (CPLL after an Android boot, GPLL after a
   microSD boot) by the CPLL state it sees at probe (§3.2).
 - Whether the eMMC controller has the dw_mmc internal DMA (IDMAC, `BMOD`/`DBADDR`): stock uses the external PL330 through
@@ -965,7 +957,8 @@ same in both. The runtime DDR rates (normal 396, video 300, suspend 198 MHz) are
 A mainline-based U-Boot SPL that writes this set (timings, NoC, PHY, DPLL, MR0/MR1; without the PD_IDLE/MCFG1 policy)
 **boots the RC2 and passes memory tests** [CONFIRMED-device]: `ddrphy` 396 MHz, the registers equal the stock dump apart
 from MCMD, MCFG/MCFG1 and the calibration result REG60; U-Boot `mw`/`cp`/`cmp` over 2 × 64 MiB with two patterns, and in
-Linux five md5 runs over a 96 MiB file while a `dd bs=4M` loop streams memory, all equal, no oops.
+Linux five md5 runs over a 96 MiB file while a `dd bs=4M` loop streams memory, all equal, no oops. The stock vs mainline
+register diff of the DDR controller and PHY, and what it means for latency: [`../memory/README.md`](../memory/README.md) §6.
 
 ### 8.2 The DRAM part
 
