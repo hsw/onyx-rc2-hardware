@@ -189,7 +189,7 @@ code:
    - `"RSAK"` (`0x2e30`): the tag of an RSA key block that may occupy the first chunk of the init area. In non-secure mode a chunk
      starting with `"RSAK"` is skipped.
    - **Secure boot** (`IMEM+0xc` ≠ 0) needs **GPIO3_A4 high and efuse word (macro 0, bytes 0x1c–0x1f) == `0xEFFE1001`** (`0x368`).
-     In secure mode [STRONG on the details]:
+     In secure mode (full sequence in §8; never run on the RC2):
      - The first chunk is the key block. SHA-256 (crypto block at `0x10200000`) of the 512 bytes at block+`[0xc]` must equal the
        32-byte efuse hash (macro 1, `0x3a4`).
      - The init stage is verified with RSA-2048: operands are copied to crypto `+0x500/+0x600/+0x700` (`0x2e8`).
@@ -328,6 +328,51 @@ The payload is 8 bytes that can be audited by eye. The ROM writes nothing, and t
 
 A follow-up, only after A or B works: stock DDR init + stock `rk30usbplug` as the boot part. The book should then enumerate as
 Rockusb without loading Android. Do not run write tools against it.
+
+## 8. Secure boot and the crypto engine (`0x10200000`)
+
+Secure boot is the only place the ROM drives the crypto engine, and the ROM is the only register reference for it (the
+register map and what was measured on the chip: [`../soc/README.md`](../soc/README.md) §1.5). Everything here is read
+from the code [CONFIRMED]; secure boot itself never ran on the RC2 (it is off, §3).
+
+Routines:
+
+| Offset | What |
+|---|---|
+| `0x1e4` | reset: pulse CRU `SOFTRST_CON(3)` bit 5 (`0x2000011c`), crypto `+0x100` = 2, `CTRL` \|= `0xc0` (flush), `INTSTS` = all ones, wait for the flush bits |
+| `0x120` | hash setup: `+0x18` = `0x10501000`, `+0xc8` = total byte length, `+0xc0` = 10 (SHA-256, output swap) |
+| `0x13c` | feed one chunk: wait `CTRL` bit 3 clear, clear `INTSTS` bit 4, `+0x18` = address (or copy the chunk to `0x10501000` first), `+0x1c` = length in words, set `CTRL` bit 3; with `wait` = 0 poll it clear |
+| `0x1b0` | read the 8-word digest from `+0xcc` once `+0xc4` ≠ 0 |
+| `0x23c` | start the PKA: message → `+0x400`, operands → `+0x600`/`+0x700`/`+0x500`, clear `INTSTS` bit 5, set `CTRL` bit 4, return without waiting |
+| `0x2b8` | wait `CTRL` bit 4 clear, read 8 words of the result from `+0x400` |
+| `0x2e8` | operands from the key block (`r1` = 0), or (`r1` = 1) save them from the engine to SRAM `0x10081d00`–`0x10081fff`, reset, and restart the PKA with the saved copies |
+| `0x3a4` | SHA-256 of the 512 bytes at key block + `[0xc]`, compared with 32 efuse bytes (macro 1) |
+| `0x3fc` | the signature check: digest, PKA result, 32-byte compare |
+
+Sequence (the IDBlock load loop at `0x19b4`; two other loaders make the same calls in the same order, at `0x1fe4` and
+`0x2b34`):
+
+1. The first 2 KB chunk is the key block (in SRAM at `0x10080800`); `0x3a4` checks it against the efuse hash.
+2. `0x2e8(block + [0x18], 0)`: the init-stage signature and the key operands go to the engine and **the PKA starts at
+   once, running while the hash is fed**.
+3. `0x120(init_size · 512 − 2048)`: one hash over the rest of the init stage; the boot-part signature (256 bytes at
+   block + `[0x1c]`) is saved to IMEM `0x10080164`.
+4. Each further chunk: `0x13c(chunk, 2048, wait)`. **One hash spans many DMA starts**: the total length is set once and
+   the engine keeps its state between starts. SRAM chunks are copied to `0x10501000` and waited for; boot-part chunks in
+   DDR are hashed in place without waiting, so the next medium read overlaps the hash.
+5. After the last init chunk: `0x3fc`, then the `"RK30"` tag and the DDR init call.
+6. Boot part: `0x2e8(0x10080164, 1)`, `0x120((init_boot_size − init_size) · 512)`, chunks to `0x60000000` with `wait` = 1,
+   `0x3fc`, `blx 0x60000000`.
+
+Two consequences:
+
+- **The input is fed unswapped.** The engine reads input words big-endian ([`../soc/README.md`](../soc/README.md) §1.5) and
+  the ROM sets nothing to undo it, so the digest secure boot checks is SHA-256 of the image with every 32-bit word
+  byte-reversed; a signing tool for this ROM has to hash the same way [STRONG]. The output swap only puts the digest in
+  memory order for the compare.
+- **The RSA check has no padding check**: 32 bytes of `s^e mod n` are compared with the digest and the other 224 are
+  ignored. Harmless with a large public exponent, forgeable with `e` = 3; which operand is the exponent is not known
+  [VERIFY].
 
 ## Method
 

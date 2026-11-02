@@ -40,7 +40,7 @@ Confidence marks on this page:
   (RK3066/RK3188) puts it.
 - **Peripherals are nearly RK3036** (`rk3036.dtsi`): the same bases for SD/SDIO/eMMC/I2S/NAND/CRU/GRF/timer/PWM/I2C/UART/SPI/
   DMA/GPIO, and the same SPI numbers for the 20 shared interrupts. Differences: the GIC (Cortex-A9 GIC, not GIC-400), the
-  display side (LCDC at 0x1010e000, plus EBC, IEP and LCDC1; no VOP), crypto instead of EMAC at 0x10200000, four GPIO banks
+  display side (LCDC at 0x1010e000, plus EBC, IEP and LCDC1; no VOP), a crypto engine instead of EMAC at 0x10200000 (§1.5), four GPIO banks
   instead of three.
 - **Interrupts:** the vendor Linux number is the GIC INTID, so in a device tree use **`GIC_SPI (n − 32)`**. EBC 81 →
   `GIC_SPI 49` (§2).
@@ -101,7 +101,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x1013d000 | 4 KiB | GIC distributor | | `arm,cortex-a9-gic`, first `reg` | CONFIRMED-src + ML |
 | 0x10180000 | 256 KiB | USB OTG (DWC2) | `usb20_otg`, IRQ 42 | `snps,dwc2` + `rockchip,rk3066-usb`; FIFO RAM 972 words (§1.2) | CONFIRMED-device |
 | 0x101c0000 | 256 KiB | USB host, **also DWC2** (not EHCI/OHCI) | `usb20_host`, IRQ 43; the RTL8723BU Wi-Fi sits on it | `snps,dwc2`, host mode | CONFIRMED-device |
-| 0x10200000 | 16 KiB | crypto | — | — (EMAC on RK3036) | CONFIRMED-src |
+| 0x10200000 | 16 KiB | crypto engine: SHA-1/MD5/SHA-256, RSA (PKA); a block cipher [VERIFY] | none: stock never registers a device | none fits: `rockchip,rk3288-crypto` has the same bits at other offsets (§1.5) (EMAC on RK3036) | CONFIRMED-device |
 | 0x10214000 | 16 KiB | SDMMC0 (microSD) | `rk29_sdmmc.0` | `rockchip,rk2928-dw-mshc` | CONFIRMED-device |
 | 0x10218000 | 16 KiB | SDIO | `rk29_sdmmc.1` (unused) | same | CONFIRMED-device |
 | 0x1021c000 | 16 KiB | eMMC | IRQ 48 `emmc`; the region is taken by the vendor NAND/eMMC module, not listed in `/proc/iomem` | same | CONFIRMED-device (IRQ) |
@@ -316,6 +316,45 @@ the RK2928 offsets (0x10128088/188/388 decode nothing on the RK3026: a read ther
   `0x1012d000` (the GPU port's first word) never return and the system stops answering. The CPU ports, the peripherals
   port and the memory scheduler read back; under mainline every port reads.
 
+### 1.5 Crypto engine (0x10200000)
+
+Absent from every public RK3026 document (datasheets V1.1/V1.2, the RK30xx TRM) and from the vendor 3.0 tree, which only
+declares its clocks and reset. The BootROM drives it for secure boot, so its code is the register reference
+([`../bootrom/README.md`](../bootrom/README.md) §8, read from the ROM code); the hash path was then run on the RC2 from
+userspace (`/dev/mem`, ML-RC2 kernel, no driver bound) [CONFIRMED-device]. It is a Rockchip "crypto v1" block, the family
+of RK3288's, with its own offsets:
+
+| Off | Register | Notes |
+|---|---|---|
+| 0x00 | `INTSTS` | bit 2 hash DMA done, bit 4 hash done, bit 5 PKA done; write 1 to clear. After a hash: `0x14` |
+| 0x04 | `INTENA` | bit 4 → GIC ID 72 = **`GIC_SPI 40`** (pending after done, clear after `INTSTS` is cleared) |
+| 0x08 | `CTRL` | bit 3 hash start, bit 4 PKA start, bit 6 hash flush, bit 7 PKA flush; self-clearing; **plain writes** (RK3288: hi-word mask) |
+| 0x0c, 0x10, 0x14 | — | latch any value, no effect on the hash; by position RK3288's `BRDMAS`/`BTDMAS`/`BRDMAL` (block-cipher DMA) [STRONG] |
+| 0x18 / 0x1c | hash DMA address / length in words | RK3288 `HRDMAS`/`HRDMAL` at 0x1c/0x20: **the map is RK3288's without `CONF`** |
+| 0x80–0xbc | — | 12 of 16 words latch (0xa0–0xbc in a row; 0x88 keeps 8 bits; 0x8c, 0x98, 0x9c read 0): not RK3288's AES layout; AES unproven [VERIFY] |
+| 0xc0 | `HASH_CTRL` | bits 0–1 mode (0 SHA-1, 1 MD5, 2 SHA-256), bit 3 output word swap, bit 2 latches with no effect, bits 4–7 absent |
+| 0xc4 / 0xc8 / 0xcc–0xe8 | hash status / message length in bytes / digest | the length is the whole message; the engine keeps its state over several DMA starts |
+| 0x100 | — | the ROM's reset routine writes 2; meaning unknown |
+| 0x400; 0x500, 0x600, 0x700 | PKA | 256-byte message/result; three 256-byte RSA-2048 operands |
+
+- **Input byte order** [STRONG]: the engine reads its input as big-endian 32-bit words. Every digest taken (SHA-1 and
+  SHA-256, 3 B to 64 KiB) is the correct hash of the message with each word byte-reversed, and no bit tried reverses it
+  back (`HASH_CTRL` bit 2, every bit of 0x0c/0x10/0x14). With no `CONF` there is no `BYTESWAP_HRFIFO`; the ROM itself
+  feeds its input unswapped. A driver has to byte-swap into a bounce buffer (one copy pass). 0x100 is the one register
+  not varied yet.
+- **Speed** [CONFIRMED-device, polled, without the swap]: SHA-256 151.8 MB/s on 64 KiB, 124 MB/s on 4 KiB; SHA-1
+  137.8 MB/s on 64 KiB; ~9.8 µs per message however short. The CPU (ARM NEON/asm library code, 912 MHz) does SHA-256 at
+  43 MB/s on 1500 B and 55 MB/s on 16 KiB, SHA-1 at 70 / 105 MB/s. So ~2.8x on bulk SHA-256 before the swap and driver
+  costs, little for SHA-1, nothing on short messages.
+- **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
+  in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
+  mainline clock driver that models `hclk_crypto` closes it in `clk_disable_unused` unless a node claims it
+  [CONFIRMED-device]; open it before touching the block (what a read with the gate closed does was not tried).
+- **Mainline `rk3288_crypto` does not fit**: it programs RK3288 offsets (its hash DMA address lands in this block's length
+  register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A hash-only variant needs an
+  offset table, plain `CTRL` writes, the input swap and no AES/DES registration
+  ([`../mainline/README.md`](../mainline/README.md) §1).
+
 ## 2. Interrupts
 
 ### 2.1 Numbering
@@ -360,7 +399,7 @@ Numbers from RY `irqs.h`. "RC2" = the name in the stock `/proc/interrupts` ([`..
 | 66 | 34 | watchdog | — | src |
 | **67** | **35** | OTG bvalid | `bvalid` | CONFIRMED-device |
 | 68–71 | 36–39 | GPIO0–3 (bank) | chained; single GPIOs appear from 160 | CONFIRMED-device |
-| 72 | 40 | crypto | — | src |
+| 72 | 40 | crypto engine (`INTENA` +0x04 bit 4 = hash done, §1.5) | — | CONFIRMED-device |
 | 73, 74 | 41, 42 | peripheral AHB USB / EMEM arbiter | — | src |
 | 75 | 43 | LCDC1 | — | src |
 | 76 | 44 | RGA | `rga` | CONFIRMED-device |
@@ -887,6 +926,7 @@ the stock FIQ debugger on UART2 is therefore of little use.
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
+- Whether the crypto engine has a working block cipher at 0x80–0xbc, and what crypto +0x100 does (§1.5).
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).
