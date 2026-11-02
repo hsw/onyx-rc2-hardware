@@ -91,9 +91,10 @@ ROM's use of it in [`../bootrom/README.md`](../bootrom/README.md) §8. In short:
 times out on every request. The block also has AES and DES/TDES at RK3288's register layout without `CONF`: fed by the
 CPU, the FIPS-197 AES-128/192/256 vectors (encrypt and decrypt), DES and TDES-EDE3 all come out right, but only at
 7.2 MB/s for AES, and CBC/CTR do nothing in that mode. Over its own DMA (source, destination and length in words at
-`0x0c`/`0x10`/`0x14`, start `CTRL` bit 2) two-block ECB and CBC tests come out right. Not measured yet: the DMA
-throughput, and whether its writes are coherent with the CPU caches. The output showed up in memory, read through an
-uncached mapping, up to ~0.2 s after the engine reported done.
+`0x0c`/`0x10`/`0x14`, start `CTRL` bit 2) two-block ECB, CBC encrypt and CBC decrypt tests come out right. Memory
+is byte-swapped per word on that path, and the engine's writes are not coherent with the CPU caches. Not measured
+yet: the DMA throughput. Also open is the timing: the output showed up in memory, read through an uncached mapping,
+50 ms to more than 200 ms after the engine reported done.
 
 ## CPU crypto with NEON
 
@@ -128,4 +129,4 @@ measured.
 
 - The hardware JPEG decoder and encoder, the VPU's pre/post-processor, H.264 encoding, VP8.
 - Any VPU, RGA, IEP or CIF access under mainline.
-- The crypto engine's block-cipher DMA throughput and cache coherency, CTR over DMA, and its RSA unit.
+- The crypto engine's block-cipher DMA throughput and write timing, CTR over DMA, and its RSA unit.

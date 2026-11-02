@@ -363,19 +363,25 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
   2.2 µs per AES-128 block (7.2 MB/s) and 1.4 µs per DES block, dominated by register access.
 - **Block-cipher DMA** [CONFIRMED-device]: source address at 0x0c, destination at 0x10, length at 0x14 in 4-byte
   words, start = `CTRL` bit 2, done = `INTSTS` bit 0. With a 32-byte length the engine read the source page and wrote
-  exactly 32 bytes of AES-128 ECB at the destination and nothing else in the two 64 KiB areas it was checked over; a CBC start with an IV matched the
-  reference as well. The IV registers still hold the IV after a CBC start, so chaining across starts is the driver's
-  job. With `AES_CTRL` bits 7 and 8 set, memory is read and written with the bytes of every word swapped.
-  An address of 8 for the source or destination ends the start with `INTSTS` bit 1 and no write. Open: throughput,
-  and whether the engine's writes are coherent with the CPU caches. The output reached memory, seen through an
-  uncached mapping, up to ~0.2 s after the done flags.
+  exactly 32 bytes of AES-128 ECB at the destination and nothing else in the two 64 KiB areas it was checked over.
+  CBC encrypt with an IV matched the reference, and CBC decrypt gave the plaintext back. The IV registers still hold
+  the IV after a CBC start, so chaining across starts is the driver's job.
+- **DMA byte order:** memory is read and written with the bytes of every 32-bit word swapped against the AES byte
+  order, whether `AES_CTRL` bits 7/8 are set or clear; those bits act only on the CPU-fed registers. RK3288 has the
+  DMA-side swap in `CONF`, which this block lacks, so a driver swaps the words itself, as for the hash.
+- **No cache coherency:** a cacheable mapping of the destination never showed the output, so the engine writes past
+  the CPU caches and needs the usual non-coherent DMA handling.
+- An address of 8 for the source or destination ends the start with `INTSTS` bit 1 and no write.
+- **Open:** the throughput, and the timing. Read through an uncached mapping, the output showed up 50 ms to more than
+  200 ms after the done flags. Not yet known: whether those writes really arrive that late, or whether the reads
+  were served stale cache lines.
 - **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
   in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
   mainline clock driver that models `hclk_crypto` closes it in `clk_disable_unused` unless a node claims it
   [CONFIRMED-device]; open it before touching the block (what a read with the gate closed does was not tried).
 - **Mainline `rk3288_crypto` does not fit**: it programs RK3288 offsets (its hash DMA address lands in this block's length
   register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A variant needs an offset table,
-  plain `CTRL` writes and the hash input swap; AES/DES registration waits on the coherency check
+  plain `CTRL` writes and the hash and cipher word swaps; AES/DES registration waits on the DMA timing check
   ([`../mainline/README.md`](../mainline/README.md) §1).
 
 ## 2. Interrupts
@@ -960,7 +966,7 @@ the stock FIQ debugger on UART2 is therefore of little use.
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
-- The crypto engine's block-cipher DMA throughput and cache coherency, CTR over DMA, and what +0x100 does (§1.5).
+- The crypto engine's block-cipher DMA throughput and write timing, CTR over DMA, and what +0x100 does (§1.5).
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).
