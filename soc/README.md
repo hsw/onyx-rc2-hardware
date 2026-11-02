@@ -101,7 +101,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x1013d000 | 4 KiB | GIC distributor | | `arm,cortex-a9-gic`, first `reg` | CONFIRMED-src + ML |
 | 0x10180000 | 256 KiB | USB OTG (DWC2) | `usb20_otg`, IRQ 42 | `snps,dwc2` + `rockchip,rk3066-usb`; FIFO RAM 972 words (§1.2) | CONFIRMED-device |
 | 0x101c0000 | 256 KiB | USB host, **also DWC2** (not EHCI/OHCI) | `usb20_host`, IRQ 43; the RTL8723BU Wi-Fi sits on it | `snps,dwc2`, host mode | CONFIRMED-device |
-| 0x10200000 | 16 KiB | crypto engine: SHA-1/MD5/SHA-256, RSA (PKA); a block cipher [VERIFY] | none: stock never registers a device | none fits: `rockchip,rk3288-crypto` has the same bits at other offsets (§1.5) (EMAC on RK3036) | CONFIRMED-device |
+| 0x10200000 | 16 KiB | crypto engine: SHA-1/MD5/SHA-256, RSA (PKA), DES/TDES and AES (§1.5) | none: stock never registers a device | none fits: `rockchip,rk3288-crypto` has the same bits at other offsets (§1.5) (EMAC on RK3036) | CONFIRMED-device |
 | 0x10214000 | 16 KiB | SDMMC0 (microSD) | `rk29_sdmmc.0` | `rockchip,rk2928-dw-mshc` | CONFIRMED-device |
 | 0x10218000 | 16 KiB | SDIO | `rk29_sdmmc.1` (unused) | same | CONFIRMED-device |
 | 0x1021c000 | 16 KiB | eMMC | IRQ 48 `emmc`; the region is taken by the vendor NAND/eMMC module, not listed in `/proc/iomem` | same | CONFIRMED-device (IRQ) |
@@ -322,16 +322,22 @@ Absent from every public RK3026 document (datasheets V1.1/V1.2, the RK30xx TRM) 
 declares its clocks and reset. The BootROM drives it for secure boot, so its code is the register reference
 ([`../bootrom/README.md`](../bootrom/README.md) §8, read from the ROM code); the hash path was then run on the RC2 from
 userspace (`/dev/mem`, ML-RC2 kernel, no driver bound) [CONFIRMED-device]. It is a Rockchip "crypto v1" block, the family
-of RK3288's, with its own offsets:
+of RK3288's: RK3288's register map without `CONF`, with the AES, TDES and hash blocks packed back to back (each
+has RK3288's word count and its control register exactly RK3288's width) [STRONG]:
 
 | Off | Register | Notes |
 |---|---|---|
 | 0x00 | `INTSTS` | bit 2 hash DMA done, bit 4 hash done, bit 5 PKA done; write 1 to clear. After a hash: `0x14` |
 | 0x04 | `INTENA` | bit 4 → GIC ID 72 = **`GIC_SPI 40`** (pending after done, clear after `INTSTS` is cleared) |
-| 0x08 | `CTRL` | bit 3 hash start, bit 4 PKA start, bit 6 hash flush, bit 7 PKA flush; self-clearing; **plain writes** (RK3288: hi-word mask) |
-| 0x0c, 0x10, 0x14 | — | latch any value, no effect on the hash; by position RK3288's `BRDMAS`/`BTDMAS`/`BRDMAL` (block-cipher DMA) [STRONG] |
+| 0x08 | `CTRL` | bit 0 AES start, bit 1 TDES start, bit 3 hash start, bit 4 PKA start, bit 6 hash flush, bit 7 PKA flush; self-clearing; **plain writes** (RK3288: hi-word mask) |
+| 0x0c, 0x10, 0x14 | block-cipher DMA source / destination / length | 32 bits each, no effect on the hash; roles by position (RK3288 `BRDMAS`/`BTDMAS`/`BRDMAL`) [STRONG] |
 | 0x18 / 0x1c | hash DMA address / length in words | RK3288 `HRDMAS`/`HRDMAL` at 0x1c/0x20: **the map is RK3288's without `CONF`** |
-| 0x80–0xbc | — | 12 of 16 words latch (0xa0–0xbc in a row; 0x88 keeps 8 bits; 0x8c, 0x98, 0x9c read 0): not RK3288's AES layout; AES unproven [VERIFY] |
+| 0x20 / 0x24 | `AES_CTRL` / `AES_STS` | `AES_CTRL` is 12 bits wide, RK3288's bits 0–11; `AES_STS` reads 0 |
+| 0x28–0x34 / 0x38–0x44 | `AES_DIN0–3` / `AES_DOUT0–3` | DOUT read-only, written by an AES start |
+| 0x48–0x54 / 0x58–0x74 / 0x78–0x84 | `AES_IV0–3` / `AES_KEY0–7` / `AES_CNT0–3` | all 32 bits wide |
+| 0x88 / 0x8c | `TDES_CTRL` / `TDES_STS` | `TDES_CTRL` 9 bits wide, RK3288's bits 0–8; `TDES_STS` reads 0 |
+| 0x90–0x94 / 0x98–0x9c | `TDES_DIN0–1` / `TDES_DOUT0–1` | DOUT read-only; DES of a zero block under a zero key came out right |
+| 0xa0–0xa4 / 0xa8–0xbc | `TDES_IV0–1` / `TDES_KEY1–3` | all 32 bits wide |
 | 0xc0 | `HASH_CTRL` | bits 0–1 mode (0 SHA-1, 1 MD5, 2 SHA-256), bit 3 output word swap, bit 2 latches with no effect, bits 4–7 absent |
 | 0xc4 / 0xc8 / 0xcc–0xe8 | hash status / message length in bytes / digest | the length is the whole message; the engine keeps its state over several DMA starts |
 | 0x100 | — | the ROM's reset routine writes 2; meaning unknown |
@@ -346,13 +352,19 @@ of RK3288's, with its own offsets:
   137.8 MB/s on 64 KiB; ~9.8 µs per message however short. The CPU (ARM NEON/asm library code, 912 MHz) does SHA-256 at
   43 MB/s on 1500 B and 55 MB/s on 16 KiB, SHA-1 at 70 / 105 MB/s. So ~2.8x on bulk SHA-256 before the swap and driver
   costs, little for SHA-1, nothing on short messages.
+- **Block ciphers** [CONFIRMED-device for DES, STRONG for AES]: a TDES start with everything at reset leaves
+  `8ca64de9 c1b123a7` in `TDES_DOUT` — DES of a zero block under a zero key, as big-endian words. An AES start with
+  everything at reset leaves `0x36` in all 16 bytes of `AES_DOUT`: that is S^10(0), ten AES-128 rounds of a zero block
+  with all-zero round keys (ShiftRows and MixColumns keep a uniform state uniform). A zero key expands to non-zero
+  round keys, so the key schedule did not run; RK3288 runs it on `AES_CTRL` bit 7 (`KEY_CHANGE`), not set in that
+  test. The FIPS-197 vectors, the modes and the DMA path are not checked yet.
 - **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
   in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
   mainline clock driver that models `hclk_crypto` closes it in `clk_disable_unused` unless a node claims it
   [CONFIRMED-device]; open it before touching the block (what a read with the gate closed does was not tried).
 - **Mainline `rk3288_crypto` does not fit**: it programs RK3288 offsets (its hash DMA address lands in this block's length
-  register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A hash-only variant needs an
-  offset table, plain `CTRL` writes, the input swap and no AES/DES registration
+  register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A variant needs an offset table,
+  plain `CTRL` writes and the hash input swap; AES/DES registration waits on the vector and DMA checks
   ([`../mainline/README.md`](../mainline/README.md) §1).
 
 ## 2. Interrupts
@@ -937,7 +949,7 @@ the stock FIQ debugger on UART2 is therefore of little use.
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
-- Whether the crypto engine has a working block cipher at 0x80–0xbc, and what crypto +0x100 does (§1.5).
+- The crypto engine's AES with real keys (FIPS-197), its modes and block-cipher DMA, and what +0x100 does (§1.5).
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).
