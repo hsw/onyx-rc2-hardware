@@ -372,16 +372,20 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
 - **No cache coherency:** a cacheable mapping of the destination never showed the output, so the engine writes past
   the CPU caches and needs the usual non-coherent DMA handling.
 - An address of 8 for the source or destination ends the start with `INTSTS` bit 1 and no write.
-- **Open:** the throughput, and the timing. Read through an uncached mapping, the output showed up 50 ms to more than
-  200 ms after the done flags. Not yet known: whether those writes really arrive that late, or whether the reads
-  were served stale cache lines.
+- **Timing and speed:** with buffers that were never in a CPU cache, the output is in memory 3 µs after a 32-byte
+  start, and `INTSTS` bit 0 marks the real end. ECB over DMA, one start per 4 KiB page, runs at **32.3 MB/s**, the
+  same on 64 KiB and on 1 MiB (about 0.5 µs per block; 2.2 µs when the CPU feeds it). That is level with the
+  kernel's NEON AES on this Cortex-A9 (30–38 MB/s), so the gain is CPU offload, not speed.
+- An earlier probe saw the output arrive 24–200 ms late. That came from the probe itself: it read the destination
+  through a cacheable mapping, and `/dev/mem` `O_SYNC` reads of the same page then returned the stale cached lines
+  until they were evicted.
 - **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
   in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
   mainline clock driver that models `hclk_crypto` closes it in `clk_disable_unused` unless a node claims it
   [CONFIRMED-device]; open it before touching the block (what a read with the gate closed does was not tried).
 - **Mainline `rk3288_crypto` does not fit**: it programs RK3288 offsets (its hash DMA address lands in this block's length
   register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A variant needs an offset table,
-  plain `CTRL` writes and the hash and cipher word swaps; AES/DES registration waits on the DMA timing check
+  plain `CTRL` writes and the hash and cipher word swaps
   ([`../mainline/README.md`](../mainline/README.md) §1).
 
 ## 2. Interrupts
@@ -966,7 +970,7 @@ the stock FIQ debugger on UART2 is therefore of little use.
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
-- The crypto engine's block-cipher DMA throughput and write timing, CTR over DMA, and what +0x100 does (§1.5).
+- The crypto engine's CTR mode and TDES over DMA, and what +0x100 does (§1.5).
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).

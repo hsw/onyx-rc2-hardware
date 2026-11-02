@@ -15,7 +15,7 @@ from microSD. Capabilities that only the datasheet states are left out; addresse
 | IPP | — | module loaded, but `/dev/rk29-ipp` is never created: every user falls back to software | — |
 | IEP, CIF | 0x10108000, 0x1010a000 | no driver, never used | clocks gated at idle, nothing else |
 | GPU Mali-400 MP2 | 0x10090000 | vendor `mali`/`ump`, EGL/GLES probed ([`../gpu/README.md`](../gpu/README.md)) | **lima works**: render node, Mesa, glmark2, devfreq 192–384 MHz, glamor |
-| Crypto engine | 0x10200000 | never used (secure boot is off) | correct SHA-1/SHA-256 at ~150 MB/s from userspace; AES-128/192/256 and DES/TDES pass their known answers; AES ECB/CBC over DMA right on 32-byte tests; `rk3288_crypto` does not fit ([`../soc/README.md`](../soc/README.md) §1.5) |
+| Crypto engine | 0x10200000 | never used (secure boot is off) | correct SHA-1/SHA-256 at ~150 MB/s from userspace; AES-128/192/256 and DES/TDES pass their known answers; AES over DMA right, 32 MB/s; `rk3288_crypto` does not fit ([`../soc/README.md`](../soc/README.md) §1.5) |
 | CPU (NEON) crypto | — | OpenSSL with NEON measured | kernel `aes-neonbs` +20–42 % over scalar AES |
 
 ## VPU (Hantro), 0x10104000
@@ -92,9 +92,9 @@ times out on every request. The block also has AES and DES/TDES at RK3288's regi
 CPU, the FIPS-197 AES-128/192/256 vectors (encrypt and decrypt), DES and TDES-EDE3 all come out right, but only at
 7.2 MB/s for AES, and CBC/CTR do nothing in that mode. Over its own DMA (source, destination and length in words at
 `0x0c`/`0x10`/`0x14`, start `CTRL` bit 2) two-block ECB, CBC encrypt and CBC decrypt tests come out right. Memory
-is byte-swapped per word on that path, and the engine's writes are not coherent with the CPU caches. Not measured
-yet: the DMA throughput. Also open is the timing: the output showed up in memory, read through an uncached mapping,
-50 ms to more than 200 ms after the engine reported done.
+is byte-swapped per word on that path, and the engine's writes are not coherent with the CPU caches; the output is
+in memory microseconds after the start. ECB over DMA runs at **32 MB/s** (64 KiB and 1 MiB alike), level with the
+kernel's NEON AES below. So the engine saves CPU time, not wall time, on AES; on SHA-256 it is ~2.7x faster.
 
 ## CPU crypto with NEON
 
@@ -129,4 +129,4 @@ measured.
 
 - The hardware JPEG decoder and encoder, the VPU's pre/post-processor, H.264 encoding, VP8.
 - Any VPU, RGA, IEP or CIF access under mainline.
-- The crypto engine's block-cipher DMA throughput and write timing, CTR over DMA, and its RSA unit.
+- The crypto engine's CTR mode and TDES over DMA, and its RSA unit.
