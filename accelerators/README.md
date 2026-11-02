@@ -15,7 +15,7 @@ from microSD. Capabilities that only the datasheet states are left out; addresse
 | IPP | — | module loaded, but `/dev/rk29-ipp` is never created: every user falls back to software | — |
 | IEP, CIF | 0x10108000, 0x1010a000 | no driver, never used | clocks gated at idle, nothing else |
 | GPU Mali-400 MP2 | 0x10090000 | vendor `mali`/`ump`, EGL/GLES probed ([`../gpu/README.md`](../gpu/README.md)) | **lima works**: render node, Mesa, glmark2, devfreq 192–384 MHz, glamor |
-| Crypto engine | 0x10200000 | never used (secure boot is off) | correct SHA-1/SHA-256 at ~150 MB/s from userspace; AES-128/192/256 and DES/TDES pass their known answers (CPU-fed); `rk3288_crypto` does not fit ([`../soc/README.md`](../soc/README.md) §1.5) |
+| Crypto engine | 0x10200000 | never used (secure boot is off) | correct SHA-1/SHA-256 at ~150 MB/s from userspace; AES-128/192/256 and DES/TDES pass their known answers; AES ECB/CBC over DMA right on 32-byte tests; `rk3288_crypto` does not fit ([`../soc/README.md`](../soc/README.md) §1.5) |
 | CPU (NEON) crypto | — | OpenSSL with NEON measured | kernel `aes-neonbs` +20–42 % over scalar AES |
 
 ## VPU (Hantro), 0x10104000
@@ -90,7 +90,10 @@ ROM's use of it in [`../bootrom/README.md`](../bootrom/README.md) §8. In short:
 64 KiB (124 MB/s on 4 KiB, ~9.8 µs per message), input read as big-endian words; mainline `rk3288_crypto` bound to it
 times out on every request. The block also has AES and DES/TDES at RK3288's register layout without `CONF`: fed by the
 CPU, the FIPS-197 AES-128/192/256 vectors (encrypt and decrypt), DES and TDES-EDE3 all come out right, but only at
-7.2 MB/s for AES, and CBC/CTR do nothing in that mode. The DMA path, which a driver needs for speed, is not checked yet.
+7.2 MB/s for AES, and CBC/CTR do nothing in that mode. Over its own DMA (source, destination and length in words at
+`0x0c`/`0x10`/`0x14`, start `CTRL` bit 2) two-block ECB and CBC tests come out right. Not measured yet: the DMA
+throughput, and whether its writes are coherent with the CPU caches. The output showed up in memory, read through an
+uncached mapping, up to ~0.2 s after the engine reported done.
 
 ## CPU crypto with NEON
 
@@ -125,4 +128,4 @@ measured.
 
 - The hardware JPEG decoder and encoder, the VPU's pre/post-processor, H.264 encoding, VP8.
 - Any VPU, RGA, IEP or CIF access under mainline.
-- Block-cipher DMA and the CBC/CTR modes over DMA in the crypto engine; its RSA unit.
+- The crypto engine's block-cipher DMA throughput and cache coherency, CTR over DMA, and its RSA unit.
