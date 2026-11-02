@@ -455,7 +455,11 @@ that every Rockchip clock driver sets; a plain syscon regmap does not work witho
 **CLKSEL23 keeps its upper half** [value CONFIRMED-device, conclusion STRONG]: stock writes the `dclk_ebc` divider as a hiword
 write (`0xFF000000 | 3 << 8`) and the register reads back exactly **0xFF000300**. Every other hiword CLKSEL in the dump reads
 with a zero upper half (CLKSEL27/28 read 0xFF01 after the same kind of write). So model `dclk_ebc` as a plain read-modify-write
-mux/divider, or check with one write first [VERIFY].
+mux/divider. **Settled** [CONFIRMED-device on another RK3026 board, 2026-08, per the mainline clock driver]: a plain 32-bit store of `0x00000101` changed bit 0, and bits 31:16 are
+plain storage; written with the hiword flags, the divider write landed as the literal `0xff000100`, which cleared the mux bit
+and parked `dclk_ebc` on CPLL. The mainline clock driver in [github.com/hsw/linux](https://github.com/hsw/linux)
+(`drivers/clk/rockchip/clk-rk3026.c`) therefore registers this composite without the hiword flags, and the RC2 runs it at
+160 MHz.
 
 ### 3.2 PLLs
 
@@ -506,7 +510,7 @@ From RY `mach-rk3026/clock_data.c` and `cru.h`. Gate number = 16·CON + bit, res
 
 | Block | Clock: register / field (parents) | Gates | Resets |
 |---|---|---|---|
-| **EBC** | `dclk_ebc`: CLKSEL23 div[15:8], src[0] (0 = CPLL, 1 = GPLL). On the device: div 3, src 0 → **160 MHz** from CPLL 640 MHz [CONFIRMED-device] | `DCLK_EBC_SRC` 3/4; `HCLK_EBC` 9/9 (from `hclk_disp_pre`: CLKSEL30 div[12:8], src[15], gate 0/11). Stock also enables `aclk_lcdc1` (9/6, through `ACLK_VIO1` 9/10, parent CLKSEL31) and the `pd_lcdc1` domain | `EBC_AXI` 7/11, `EBC_AHB` 7/12 |
+| **EBC** | `dclk_ebc`: CLKSEL23 div[15:8], src[0] (0 = CPLL, 1 = GPLL). On the device: div 3, src 0 → **160 MHz** from CPLL 640 MHz [CONFIRMED-device] | `DCLK_EBC_SRC` 3/4; `HCLK_EBC` 9/9 (from `hclk_disp_pre`: CLKSEL30 div[12:8], src[15], gate 0/11). Stock also enables `aclk_lcdc1` (9/6, through `ACLK_VIO1` 9/10, parent CLKSEL31) and the `pd_lcdc1` domain. Mainline also enables `ACLK_EBC`, the block's own AXI master (fetch) clock, below | `EBC_AXI` 7/11, `EBC_AHB` 7/12 |
 | SDMMC0 | CLKSEL11 div[5:0], src[6] (CPLL/GPLL) | `MMC0_SRC` 2/11; `HCLK_SDMMC0` 5/10 | `MMC0` 5/1 |
 | SDIO | CLKSEL12 div[5:0], src[6] | `SDIO_SRC` 2/13; `HCLK_SDIO` 5/11 | `SDIO` 5/2 |
 | eMMC | CLKSEL12 div[13:8], src[7] | `EMMC_SRC` 2/14; `HCLK_EMMC` 7/0 | `EMMC` 5/3 |
@@ -525,6 +529,13 @@ Seen on the device:
 - **The EBC clocks are never gated at idle** [CONFIRMED-device]: `dclk_ebc`, `hclk_ebc`, `aclk_lcdc1` and `pd_lcdc1` all have a
   use count equal to the number of display updates since boot plus one, so the stock driver enables them on every update and
   never disables them. Whether the EBC survives gating between updates is untested [VERIFY].
+- **Mainline EBC clocks** (2026-11, the DRM driver in [github.com/hsw/linux](https://github.com/hsw/linux); details in
+  [onyx-rc2-ebc](https://github.com/hsw/onyx-rc2-ebc) `driver/registers.md` §5): `hclk_ebc`, `dclk_ebc`, `aclk_lcdc1` and
+  `ACLK_EBC`. Without `ACLK_EBC` frames complete and the end-of-update interrupt arrives, but no pixel data is fetched [STRONG].
+  Mainline has no `pd_lcdc1` driver and the EBC works without one. All four clocks are gated across s2idle and enabled again on
+  resume, with every EBC register rewritten: 10 RTC-wake cycles and 10 `pm_test` cycles, each page turn after resume drew
+  [CONFIRMED-device]. Gating between updates while running is still untested. The block resets `EBC_AXI`/`EBC_AHB` (7/11,
+  7/12) recover a stuck scan [CONFIRMED-device].
 - **TIMER1 runs with its own gate closed**: `PCLK_TIMER1` (7/8) is gated while TIMER1 at 0x20044020 is the running
   clocksource. TIMER1 sits in the TIMER0 APB block and lives on `PCLK_TIMER0` (7/7); gate 7/8 belongs to the unused RK2928-style
   block at 0x20046000. Mainline needs one `pclk_timer`, as for RK3036 [CONFIRMED-device + STRONG].
@@ -667,7 +678,7 @@ Offsets from RY `mach-rk3026/include/mach/grf.h`. All control registers below ar
 | 0x144 | `SOC_CON1` | **bits 11–14: I2C0…I2C3 served by the new rk30 controller** (mask bits 27–30) | 0x7802: all four set | `i2c-rk3x` writes `BIT(27+n) \| BIT(11+n)`, but no SoC uses offset 0x144: a `rockchip,rk3026-i2c` with `grf_offset = 0x144` is needed |
 | 0x148 | `SOC_CON2` | idle requests, bits 8–13 | 0x0082: no requests | `rk3036_pm_domains` uses bits 8–14 at the same offset |
 | 0x14c | `SOC_STATUS0` | idle acks 16–21, idle 22–27; **USB: bvalid bit 7, DP/DM 9:8, id bit 10** | 0x04BF with the cable: bvalid 1, id 1 (B-device), line state 0 | RK3036 table: bvalid bit 8, line state 10:9, id bit 11 — **shifted by one**, so the RK3036 data does not fit |
-| **0x150** | `LVDS_CON0` | **bit 0 `DATA_SEL`: 1 = the EBC data lines drive the LVDS pads (`LCDC_D0..D9`)**, 0 = LCDC; bit 8 LVDS PLL off; bit 9 LVTTL mode. Stock sets bit 0 when the panel powers up and writes 0xFFFF0300 at power-down | 0x0300 at idle: EBC lines off the pads | an EBC driver must do this itself (through `rockchip,grf`) |
+| **0x150** | `LVDS_CON0` | **bit 0 `DATA_SEL`: 1 = the EBC data lines drive the LVDS pads (`LCDC_D0..D9`)**, 0 = LCDC; bit 8 LVDS PLL off; bit 9 LVTTL mode. Stock sets bit 0 when the panel powers up and writes 0xFFFF0300 at power-down | 0x0300 at idle: EBC lines off the pads | an EBC driver must do this itself (through `rockchip,grf`), **all three bits**: at `0x101` nothing draws, `0x301` brings the image up (mainline) |
 | 0x17c | `UOC0_CON0` | OTG PHY: bvalid IRQ enable/status bits 14/15, line-state bits 12/13 | 0x4002 | `rk3036_phy_cfgs` uses the same register and bits |
 | 0x190, 0x194 | `UOC1_CON0/1` | host PHY; 0x194 = suspend | 0x01D5 with Wi-Fi off | same offset (RK3036 suspend value 0x1d1) |
 | 0x1a0 | `UOC_CON` | OTG id interrupt: rise enable/status bits 0/1, fall bits 2/3 | 0xC2A5: both enabled, none pending | RK3036 has no id detection; the RK3128 table (`rk3128_phy_cfgs`) has exactly this layout |
