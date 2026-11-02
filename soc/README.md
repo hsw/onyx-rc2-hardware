@@ -356,7 +356,7 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
   `8ca64de9 c1b123a7` in `TDES_DOUT` — DES of a zero block under a zero key, as big-endian words. An AES start with
   everything at reset leaves `0x36` in all 16 bytes of `AES_DOUT`: that is S^10(0), ten AES-128 rounds of a zero block
   with all-zero round keys (ShiftRows and MixColumns keep a uniform state uniform). A zero key expands to non-zero
-  round keys, so the key schedule did not run; RK3288 runs it on `AES_CTRL` bit 7 (`KEY_CHANGE`), not set in that
+  round keys, so the key schedule did not run; RK3288 runs it on `AES_CTRL` bit 6 (`KEY_CHANGE`), not set in that
   test. The FIPS-197 vectors, the modes and the DMA path are not checked yet.
 - **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
   in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
