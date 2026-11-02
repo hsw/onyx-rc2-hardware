@@ -352,19 +352,23 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
   137.8 MB/s on 64 KiB; ~9.8 µs per message however short. The CPU (ARM NEON/asm library code, 912 MHz) does SHA-256 at
   43 MB/s on 1500 B and 55 MB/s on 16 KiB, SHA-1 at 70 / 105 MB/s. So ~2.8x on bulk SHA-256 before the swap and driver
   costs, little for SHA-1, nothing on short messages.
-- **Block ciphers** [CONFIRMED-device for DES, STRONG for AES]: a TDES start with everything at reset leaves
-  `8ca64de9 c1b123a7` in `TDES_DOUT` — DES of a zero block under a zero key, as big-endian words. An AES start with
-  everything at reset leaves `0x36` in all 16 bytes of `AES_DOUT`: that is S^10(0), ten AES-128 rounds of a zero block
-  with all-zero round keys (ShiftRows and MixColumns keep a uniform state uniform). A zero key expands to non-zero
-  round keys, so the key schedule did not run; RK3288 runs it on `AES_CTRL` bit 6 (`KEY_CHANGE`), not set in that
-  test. The FIPS-197 vectors, the modes and the DMA path are not checked yet.
+- **Block ciphers** [CONFIRMED-device]: fed by the CPU (no DMA), the FIPS-197 AES-128/192/256 vectors encrypt and
+  decrypt correctly, and so do a DES vector, DES decrypt and a three-key TDES-EDE3 vector. Key, data and output are
+  big-endian words: key from `AES_KEY0`, data from `AES_DIN0`, `AES_CTRL` = bit 6 (`KEY_CHANGE`) | key size in bits
+  2–3, decrypt bit 0; TDES decrypt is `TDES_CTRL` bit 0, TDES (EDE) bit 2. The key schedule runs on `KEY_CHANGE`,
+  survives later blocks (encrypt and decrypt without it are right) and is lost on a block reset; without it after a
+  reset the engine runs with all-zero round keys (a zero block gives sixteen `0x36` = S^10(0)). `AES_CTRL` bits 7, 8
+  and 10 swap the bytes of each input, output and key word, as on RK3288. CBC (bit 4) and CTR (bit 5) have no effect
+  when the CPU feeds the block: the output is ECB and the IV/CNT registers do not change. CPU-fed throughput is
+  2.2 µs per AES-128 block (7.2 MB/s) and 1.4 µs per DES block, dominated by register access. The DMA path is not
+  checked yet.
 - **Clocks and reset:** `hclk_crypto` = CLKGATE_CON(3) bit 5, the core clock gate CLKGATE_CON(0) bit 12 with the divider
   in CLKSEL_CON(24) (from `aclk_peri`), `SOFT_RST_CRYPTO` = SOFTRST_CON(3) bit 5. The loader leaves the gates open; a
   mainline clock driver that models `hclk_crypto` closes it in `clk_disable_unused` unless a node claims it
   [CONFIRMED-device]; open it before touching the block (what a read with the gate closed does was not tried).
 - **Mainline `rk3288_crypto` does not fit**: it programs RK3288 offsets (its hash DMA address lands in this block's length
   register) and hi-word-masked `CTRL`; bound to this block it times out on every request. A variant needs an offset table,
-  plain `CTRL` writes and the hash input swap; AES/DES registration waits on the vector and DMA checks
+  plain `CTRL` writes and the hash input swap; AES/DES registration waits on the DMA check
   ([`../mainline/README.md`](../mainline/README.md) §1).
 
 ## 2. Interrupts
@@ -949,7 +953,7 @@ the stock FIQ debugger on UART2 is therefore of little use.
   repeats.
 - Why a pinhole reset skips the microSD card while software resets boot it (§4.5).
 - The ARM PMU interrupt (SPI 86): shared or per core.
-- The crypto engine's AES with real keys (FIPS-197), its modes and block-cipher DMA, and what +0x100 does (§1.5).
+- The crypto engine's block-cipher DMA and CBC/CTR in FIFO mode, and what +0x100 does (§1.5).
 - Physical presence of I2C3, PWM2, GPS; SAR-ADC channel 3.
 - Bits of the idle requests in `SOC_CON2` / `SOC_STATUS0` per domain; why the display-side QoS block (0x1012f000) hangs a
   read under the stock kernel (§1.4; the other open QoS and L2 points: [`../memory/README.md`](../memory/README.md) §8).
