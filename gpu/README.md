@@ -8,6 +8,8 @@ precision, entry points, functional checks, GPU memory, and what Chromium 83 mak
 Confidence marks as in the [top README](../README.md#confidence-marks): everything here is **[CONFIRMED]** (measured on the
 device) unless marked; readings of the public AOSP 4.4 and Chromium 83 sources are [STRONG].
 
+The same GPU under a mainline kernel with the free `lima` driver and Mesa: [§ Mainline: lima](#mainline-lima) (2026-10-28/29).
+
 ## The stack
 
 | Layer | What |
@@ -217,6 +219,73 @@ Bromite 83.0.4103.119 (a Chromium 83 build), `chrome://gpu` on the RC2:
   and `GL_OES_EGL_image`. The driver has all four and they work (the probe's `chromium-q3` section: fence create and wait,
   an EGLImage from a texture, `glEGLImageTargetTexture2DOES`, a second shared context), but with entry 77 applied Chromium
   sees no fence and reports no mailbox support, so that path stays off unless the workaround is overridden.
+
+## Mainline: lima
+
+Measured on the RC2 on 2026-10-28/29 with a mainline 7.1 kernel ([github.com/hsw/linux](https://github.com/hsw/linux) branch
+`rc2/main`), `lima` built as a module, Mesa 25.0.7, Xorg with glamor; the display is the EBC (E-Ink) DRM device, which has
+no scanout of its own (the CPU converts each frame to 4-bpp grey).
+
+**Kernel side**
+- Binding: `rockchip,rk3026-mali` added to the Mali-400 compatible list and to the list that requires `resets`. The
+  `rk3026.dtsi` node follows the RK3128 shape: GP, two PP cores, their MMUs, and six interrupt names on three lines
+  (`gp` SPI 3, `gpmmu`/`ppmmu0`/`ppmmu1` SPI 4, `pp0`/`pp1` SPI 5: the three vendor lines, the PP cores share theirs as on
+  RK3128); clocks `bus` and `core` both `ACLK_GPU`; `resets = <&cru SRST_GPU>`; no `power-domains`.
+- **No GPU power domain exists** [STRONG, vendor sources]: the RK3026 has no PMU block; the vendor power-domain calls are
+  stubs. The GPU is powered whenever the logic rail is; only `ACLK_GPU` (CLKGATE_CON3 bit 13) and `SRST_GPU` control it.
+  The NoC idle requests in `GRF_SOC_CON2` bits 8-13 are the only domain-like control; which bit is the GPU's is [GUESS:
+  bit 10], and mainline touches them only on restart.
+- lima binds render-only (`/dev/dri/renderD128`, GP + PP0 + PP1, "mali400 1.1") next to the EBC on `card0`. At idle runtime
+  PM gates `ACLK_GPU` and the device suspends; the kernel boots without `clk_ignore_unused`. No oops, MMU fault or job
+  timeout in any test.
+- Mesa picks lima for the EBC device by itself (`eglinfo`, `kmscube` on `card0`): no `MESA_LOADER_DRIVER_OVERRIDE` and no
+  kmsro entry for the display driver were needed with this Mesa [CONFIRMED; why the loader chose lima: VERIFY].
+
+**Clock**
+- Stock runs `ACLK_GPU` from GPLL 768 MHz: 128 MHz at rest; Mali DVFS levels 192, 256 and 384 MHz, 192 at the start and 256
+  at the end of a GPU loop, 384 never seen.
+- The first mainline clock (CPLL 640 / 6 = 107 MHz, the mux left where the loader put it) ran the GPU at 42 % of stock.
+  Mainline now puts `ACLK_GPU` on GPLL with an OPP table of **192, 256 and 384 MHz** and devfreq (`simple_ondemand`, which
+  must be built in or lima's probe fails). 128 MHz is left out on purpose: CPLL 640 / 5 gives it exactly too, and the
+  composite clock would move the mux to CPLL on each step down.
+- No `opp-microvolt`: the vendor boards give the GPU one logic voltage for every level (1.20-1.25 V up to 400 MHz), and on
+  the RC2 the GPU shares the 1.40 V DCDC3 rail with the CPU, so every level runs at least at the stock voltage. Without a
+  `mali-supply` the OPP core logs `_opp_set_regulators: no regulator (mali) found` at every probe; lima goes on.
+- 384 MHz was never used by stock; it ran clean on the RC2 for 30 min.
+
+| `ACLK_GPU` | glmark2 score | Note |
+|---|---|---|
+| 107 MHz | 39-40 | first mainline clock |
+| 192 MHz | 66 | |
+| 256 MHz | 81-83 | 1 h soak at 192/256 with devfreq, every run 83 |
+| 384 MHz | 103 | 30 min soak; GPU-bound work 1.40-1.45x over 256 MHz |
+
+No fault and no job timeout at any clock. devfreq scales between 192 MHz and the top rate and stops while runtime PM gates
+the clock.
+
+**Xorg glamor against pixman** (x11perf, ops/s, 500×500 unless named; 107 MHz):
+
+| Test | pixman | glamor |
+|---|---|---|
+| `rect500` fill | 322 | 702 |
+| `aa24text` | 55 800 | 98 500 |
+| pixmap → window copy | 231 | 653 |
+| window → window copy (`copywinwin500`) | 225 | 96 |
+| composite, scroll | 234-237 | 96 |
+
+- Fills, text and copies between two pixmaps are pure GPU work (about 1.4 pixels per clock) and scale with the clock.
+- **Copies inside one pixmap are slow** (window → window, scroll, composite, and offscreen pixmap → same pixmap): at 256 MHz
+  still 130 ops/s against pixman's 217. Profile at 256 MHz: the path is PP-bound (80-86 % busy). glamor copies through a
+  temporary texture, so each 500 px copy flushes about two GP+PP job pairs of ~2.9 ms PP each, where a copy into another
+  pixmap shares one job with ~100 others (0.69 ms). Per job ~0.12 ms + ~11 ns per pixel of the drawn region, independent
+  of the GPU clock: the tile reload and writeback through DDR [STRONG; how far the reload reaches: VERIFY]. No buffer
+  churn, no scheduler gap; at 100 px Xorg's own CPU time (~0.7 ms per op) is the floor. A fix belongs in glamor (no
+  temporary for non-overlapping copies) or lima (no reload when a draw covers the job region), not in the SoC support.
+- On an e-reader scrolling and moving windows are the common case and the panel, not X, bounds the frame rate, so pixman
+  stays the better default; the GPU's use is GLES clients.
+- The EBC side: its dumb buffers are cached shmem, and the CPU blit reads them after lima wrote them through PRIME. A stale
+  cache line was never seen on the panel (xterm and glmark2 pairs: panel = X's picture, 0 pixels off); a whole-buffer
+  `dma_sync` before every blit costs +25 ms of kernel time per full-screen commit, so it is not used [CONFIRMED for the cost].
 
 ## Files
 
