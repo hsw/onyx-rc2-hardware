@@ -340,14 +340,14 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
 | 0xa0–0xa4 / 0xa8–0xbc | `TDES_IV0–1` / `TDES_KEY1–3` | all 32 bits wide |
 | 0xc0 | `HASH_CTRL` | bits 0–1 mode (0 SHA-1, 1 MD5, 2 SHA-256), bit 3 output word swap, bit 2 latches with no effect, bits 4–7 absent |
 | 0xc4 / 0xc8 / 0xcc–0xe8 | hash status / message length in bytes / digest | the length is the whole message; the engine keeps its state over several DMA starts |
-| 0x100 | — | the ROM's reset routine writes 2; meaning unknown |
+| 0x100 | — | 2 bits; the ROM's reset routine writes 2; values 0–3 change neither DMA byte order (by position perhaps RK3288's `TRNG_CTRL`); meaning unknown |
 | 0x400; 0x500, 0x600, 0x700 | PKA | 256-byte message/result; three 256-byte RSA-2048 operands |
 
-- **Input byte order** [STRONG]: the engine reads its input as big-endian 32-bit words. Every digest taken (SHA-1 and
-  SHA-256, 3 B to 64 KiB) is the correct hash of the message with each word byte-reversed, and no bit tried reverses it
-  back (`HASH_CTRL` bit 2, every bit of 0x0c/0x10/0x14). With no `CONF` there is no `BYTESWAP_HRFIFO`; the ROM itself
-  feeds its input unswapped. A driver has to byte-swap into a bounce buffer (one copy pass). 0x100 is the one register
-  not varied yet.
+- **Input byte order** [CONFIRMED-device]: the engine reads its input as big-endian 32-bit words. Every digest taken
+  (SHA-1 and SHA-256, 3 B to 64 KiB) is the correct hash of the message with each word byte-reversed. No setting
+  reverses it back: `HASH_CTRL` bits 2/3 (bits 4–7 do not latch), every bit of 0x0c/0x10/0x14, and 0x100 = 0–3 were
+  all tried. With no `CONF` there is no `BYTESWAP_HRFIFO`; the ROM itself feeds its input unswapped. A driver has to
+  byte-swap into a bounce buffer (one copy pass).
 - **Speed** [CONFIRMED-device, polled, without the swap]: SHA-256 151.8 MB/s on 64 KiB, 124 MB/s on 4 KiB; SHA-1
   137.8 MB/s on 64 KiB; ~9.8 µs per message however short. The CPU (ARM NEON/asm library code, 912 MHz) does SHA-256 at
   43 MB/s on 1500 B and 55 MB/s on 16 KiB, SHA-1 at 70 / 105 MB/s. So ~2.8x on bulk SHA-256 before the swap and driver
@@ -367,8 +367,9 @@ has RK3288's word count and its control register exactly RK3288's width) [STRONG
   CBC encrypt with an IV matched the reference, and CBC decrypt gave the plaintext back. The IV registers still hold
   the IV after a CBC start, so chaining across starts is the driver's job.
 - **DMA byte order:** memory is read and written with the bytes of every 32-bit word swapped against the AES byte
-  order, whether `AES_CTRL` bits 7/8 are set or clear; those bits act only on the CPU-fed registers. RK3288 has the
-  DMA-side swap in `CONF`, which this block lacks, so a driver swaps the words itself, as for the hash.
+  order, whether `AES_CTRL` bits 7/8 are set or clear (those bits act only on the CPU-fed registers) and for every
+  value of 0x100. RK3288 has the DMA-side swap in `CONF`, which this block lacks, and no crypto-v1 source found has a
+  swap anywhere else, so a driver swaps the words itself, as for the hash.
 - **No cache coherency:** a cacheable mapping of the destination never showed the output, so the engine writes past
   the CPU caches and needs the usual non-coherent DMA handling.
 - An address of 8 for the source or destination ends the start with `INTSTS` bit 1 and no write.
