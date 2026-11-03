@@ -122,8 +122,14 @@ Userspace OpenSSL 4.0.3 on the stock system, NEON on vs off, MB/s at 8–16 KiB:
 
 Without `clk_ignore_unused` the kernel gates the unclaimed clocks (GPU, VPU, LCDC0 among 26), and USB, SD, I²C, the
 E-Ink controller and KOReader keep working. With 13 more gates modelled (CIF, crypto, RGA, IEP, VDPU, …) the gate
-registers CLKGATE_CON3/6/9 read `0x7bef` / `0x2c33` / `0x01a0`, the same values as under the stock kernel. Power was not
-measured.
+registers CLKGATE_CON3/6/9 read `0x7bef` / `0x2c33` / `0x01a0`, the same values as under the stock kernel.
+
+Power, measured as overnight battery drains on the CW2015 gauge (same kernel, same userspace, KOReader idle on a page,
+frontlight off, Wi-Fi off, cable out; draw compared within the same voltage bands): the awake idle draw is about 0.9 W
+with `clk_ignore_unused` and about 570 mW without it (-37 %), and a full charge lasts 17.1 h from 100 to 1 % instead of
+about 12 h. Gating the same clocks at runtime with the gate bits alone saved only about 22 % (~200 mW), so part of the
+saving may come from what the kernel does at boot beyond the gate bits (unused clocks unprepared, e.g. PLLs) [VERIFY].
+Stopping KOReader's process at idle changed the draw by less than the method resolves (~50 mW).
 
 ## Not checked on the device
 

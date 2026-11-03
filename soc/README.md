@@ -181,7 +181,8 @@ Request lines (the vendor platform data `rk29_pl330_platdata.peri[]` in the Imag
   only, no `FLUSHP`). Differences: line 13 is SPDIF on the RK3128 and memory-to-memory in stock; the RK3128 puts its 8-channel
   I2S on 14/15, beyond the 14 lines the RC2 controller reports; mainline needs the clock (`ACLK_DMAC2` in `rk3036.dtsi`,
   `ACLK_DMAC` in `rk3128.dtsi`), which stock never touches. A `rk3026.dtsi` can copy the `rk3036.dtsi` node and use lines
-  10–12 for SDMMC/SDIO/eMMC [STRONG].
+  10–12 for SDMMC/SDIO/eMMC [STRONG]; line 10 for the microSD host is confirmed on the device under mainline (§3.7)
+  [CONFIRMED-device].
 - **The API channel number is not the request line.** `rk29_dma_request()` takes an `enum dma_ch` value: eMMC is channel
   14 on request line 12; `rk29_sdmmc` picks channels 12/13/14 by `pdev->id` [CONFIRMED-dis].
 
@@ -696,6 +697,24 @@ the CRU.
   earlier 44 MHz CIU it ran out of spec without errors. As the RK2928 type the same 48 MHz CIU with CLKDIV 1 gives 24 MHz,
   and the card reads at 10.9 MB/s, more than a 12 MHz card clock (the / 2 model) can carry on a 4-bit bus
   [CONFIRMED-device]. The stock kernel runs the same 48 MHz `sclk_sdmmc` (GPLL / 16).
+- **Host configuration (HCON) and DMA** (mainline, 2026-11-02): the microSD host reads VERID `0x5342240A` and HCON
+  `0x04C534C1`, i.e. DMA interface [17:16] = 1 (external DesignWare DMA), 32-bit generic DMA data width, FIFO RAM outside
+  the core, 32-bit addressing. There is **no internal DMA (IDMAC)**: without a `dmas` property mainline `dw_mmc` falls
+  back to PIO ("Using PIO mode."). With `dmas` pointing at the PL330 request line 10 (`dma-names = "rx-tx"`, §1.1) it runs
+  the external DMA path; on the RC2 at a 24 MHz card clock, raw reads stayed at the bus limit (~10 MB/s, the same as PIO),
+  the host's interrupts fell from ~830 to ~12 per MiB read, and written data read back intact across 20 runtime
+  suspend/resume cycles of the host [CONFIRMED-device].
+- **Runtime PM gates the host's bus clock.** With a GPIO card detect, mainline `dw_mmc` gates both `sclk_sdmmc` (the CIU,
+  CLKGATE_CON2 bit 11) and `hclk_sdmmc` (the bus clock, CLKGATE_CON5 bit 10) about 50 ms after the last request, so these
+  two gate bits follow the card's activity. A `devmem` read of the host's registers while it is suspended returns bus
+  garbage (`0x900` for both VERID and HCON), not the register; hold `power/control` at `on` to read them
+  [CONFIRMED-device].
+- **Speed limits** [STRONG, from the vendor sources and datasheet; the 48 MHz rate is not yet measured under mainline]:
+  a high-speed card can run at the CIU rate itself (48 MHz, CLKDIV bypass), which the vendor kernel used; exactly 50 MHz is
+  not reachable from GPLL 768 MHz. There is no 1.8 V signalling and no UHS-I mode: the SD pins sit on the single 3.3 V
+  VCCIO rail with no I/O-domain select, the host has no sample/drive phase clocks for tuning, and the datasheet lists SD
+  2.0. No pad drive-strength or phase setting exists for this host, so CRC errors at a high rate can only be met with a
+  lower CIU rate.
 
 ## 4. GRF (0x20008000)
 
