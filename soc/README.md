@@ -709,9 +709,10 @@ the CRU.
   two gate bits follow the card's activity. A `devmem` read of the host's registers while it is suspended returns bus
   garbage (`0x900` for both VERID and HCON), not the register; hold `power/control` at `on` to read them
   [CONFIRMED-device].
-- **Speed limits** [STRONG, from the vendor sources and datasheet; the 48 MHz rate is not yet measured under mainline]:
-  a high-speed card can run at the CIU rate itself (48 MHz, CLKDIV bypass), which the vendor kernel used; exactly 50 MHz is
-  not reachable from GPLL 768 MHz. There is no 1.8 V signalling and no UHS-I mode: the SD pins sit on the single 3.3 V
+- **Speed limits.** A high-speed card runs at the CIU rate itself (48 MHz, CLKDIV bypass), as the vendor kernel did;
+  measured under mainline on a SanDisk 16 GB SDHC card: raw reads ~19-21 MB/s and writes ~15 MB/s at 48 MHz against
+  ~10 and ~8.4 MB/s at 24 MHz, no CRC or timeout errors in a 30 min soak (22 GiB read, 11 GiB written, all checksums
+  equal) [CONFIRMED-device]. Exactly 50 MHz is not reachable from GPLL 768 MHz [STRONG]. There is no 1.8 V signalling and no UHS-I mode: the SD pins sit on the single 3.3 V
   VCCIO rail with no I/O-domain select, the host has no sample/drive phase clocks for tuning, and the datasheet lists SD
   2.0. No pad drive-strength or phase setting exists for this host, so CRC errors at a high rate can only be met with a
   lower CIU rate.
