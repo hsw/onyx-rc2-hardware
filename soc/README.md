@@ -85,7 +85,7 @@ other evidence on the device. "ML" = the closest existing node; a `rockchip,rk30
 | 0x10080000 | 8 KiB | IMEM (SRAM) | stock keeps its sleep code and the CPU1 trampoline there; the custom loader runs from it; usage map and address-0 remap in §1.3 | `mmio-sram` + `rockchip,rk3066-smp-sram` at offset 0 (as `rk3036.dtsi`) | CONFIRMED-device |
 | 0x10090000 | 64 KiB | GPU Mali-400 **MP2** | `Mali_GP` +0, `Mali_L2` +0x1000, `GP_MMU` +0x3000, `PP0_MMU` +0x4000, `PP1_MMU` +0x5000, `PP0` +0x8000, `PP1` +0xa000 | `arm,mali-400` (lima); RK3036 has one PP | CONFIRMED-device |
 | 0x10100000 | 16 KiB | BootROM | dumped, see [`../bootrom/README.md`](../bootrom/README.md) | — | CONFIRMED-device |
-| 0x10104000 | 16 KiB | VPU | `vpu` (VEPU +0, VDPU +0x200) | `rockchip,rk3066-vpu` at the same address in `rk3xxx.dtsi` | CONFIRMED-device |
+| 0x10104000 | 16 KiB | VPU | `vpu` (VEPU +0, VDPU +0x200) | `rockchip,rk3066-vpu` at the same address in `rk3xxx.dtsi`, but that variant puts the decoder at +0x400; an `rk3026-vpu` variant at +0x200 works ([`../accelerators/README.md`](../accelerators/README.md)) | CONFIRMED-device |
 | 0x10108000 | 8 KiB | IEP | — | — | CONFIRMED-src |
 | 0x1010a000 | 8 KiB | CIF (camera) | — | — | CONFIRMED-src |
 | 0x1010c000 | 8 KiB | RGA (first generation) | `rga` | none: mainline `rga.c` handles RGA2 and later only | CONFIRMED-device |

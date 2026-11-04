@@ -10,7 +10,7 @@ from microSD. Capabilities that only the datasheet states are left out; addresse
 
 | Block | Base | Stock kernel on the RC2 | Mainline on the RC2 |
 |---|---|---|---|
-| VPU (Hantro VEPU + VDPU, JPEG) | 0x10104000 | driver up, encoder id 0x8270; Gallery decodes H.264 through it, if ION has the memory | no node, not probed |
+| VPU (Hantro VEPU + VDPU, JPEG) | 0x10104000 | driver up, encoder id 0x8270; Gallery decodes H.264 through it, if ION has the memory | **`hantro` works** with an RK3026 variant (decoder at +0x200): H.264 and VP8 bit-exact up to 1080p, MPEG-2 right, post-processor right after a driver fix, JPEG encode; needs ~96 MiB CMA for 1080p through the post-processor |
 | RGA, first generation (2D) | 0x1010c000 | driver up, measured: ~650 MB/s read, no grey (Y8) output, two driver bugs | no driver (mainline `rga` is RGA2+) |
 | IPP | — | module loaded, but `/dev/rk29-ipp` is never created: every user falls back to software | — |
 | IEP, CIF | 0x10108000, 0x1010a000 | no driver, never used | clocks gated at idle, nothing else |
@@ -30,8 +30,61 @@ from microSD. Capabilities that only the datasheet states are left out; addresse
   uses no ION, so it is decoded in software [STRONG].
 - The software fallback is not a way out on stock: with `OMX.google.h264` the vendor `SoftwareRenderer` crashes
   mediaserver at 360p (a 640×368 buffer against a 640×360 crop) and freezes at 720p.
-- Mainline: no node and no driver; the block was never read. `rockchip,rk3066-vpu` (`hantro`) sits at the same address in
-  `rk3xxx.dtsi`, so it is the candidate [VERIFY].
+
+### What the silicon reports
+
+Read on the RC2 (2026-11-03) under mainline with the VPU clock gates opened by hand, nothing written. Field layout after
+Hantro's `dwl_defs.h` (synthesis words at decoder registers 50, 54, 57 and the post-processor's at 100) and the vendor
+`vpu_service.h`.
+
+| Register | Value | Meaning |
+|---|---|---|
+| encoder ID (+0x000) | `0x82701110` | product **0x8270**, the smaller H1: its registers end at 0x200, so the **decoder sits at +0x200**, not +0x400 |
+| decoder ID (+0x200) | `0x67311148` | product **0x6731**, the G1 of the RK3066/RK3188 class |
+| decoder reg 50 (synthesis 1) | `0xFBB56F80` | H.264 high profile, MPEG-4 ASP, MPEG-2, VC-1 advanced profile, JPEG (not progressive), VP6, Sorenson Spark, reference buffer, post-processor present, max width **1920** |
+| decoder reg 54 (synthesis 2) | `0xE4C00000` | **VP8 yes**, RealVideo yes, AVS yes, JPEG extensions, custom MPEG-4; VP7 no, MVC no, no double reference buffer |
+| decoder reg 57 (fuse) | `0xFFF7FFFF` | every codec fuse set except AVS (bit 19); all width fuses set |
+| post-processor reg 100 | `0x1B870780` | scaling, deinterlacing, alpha blending, dithering; max output width 1920. Reg 99 (PP fuse) `0xFFFFFFFF` |
+| encoder reg 63 | `0x1B522780` | max encode width 1920; H.264 and JPEG; no VP8 encode [STRONG: bit layout not checked against a source] |
+
+Nothing is fused off. The vendor kernel reads its second config word from register 51, which reads 0 on this G1, so its
+`get_hw_info()` reports no VP8 or RealVideo here although the silicon has them.
+
+### Mainline (`hantro`)
+
+The block is RK3066's with the smaller encoder, so mainline's `rk3066_vpu_variant` (decoder at +0x400 for the 0x4831
+encoder) does not fit. Out of tree ([github.com/hsw/linux](https://github.com/hsw/linux), branch `rc2/vpu-hantro`), measured
+on the RC2 2026-11-03/04 [CONFIRMED-device unless marked]:
+
+- **Variant and node:** `rockchip,rk3026-vpu`, RK3066's decoder formats, codec ops and post-processor at `dec_offset 0x200`;
+  codecs H.264, MPEG-2 and VP8 decode plus JPEG encode (what mainline's `hantro` offers for this generation; the silicon's MPEG-4,
+  VC-1 and JPEG decode it does not drive). Node: `reg <0x10104000 0x800>`, interrupts `GIC_SPI 6` (`vepu`)
+  and `GIC_SPI 7` (`vdpu`), clocks `aclk_vdpu` (CLKGATE_CON3 bit 11; it needed its own clock id), `aclk_vcodec` and the
+  shared `hclk_vcodec`, both AXI clocks parented to GPLL. **No power domain and no IOMMU**, so every buffer is physically
+  contiguous (CMA). Both video nodes bind; decoder `v4l2-compliance` 50/50.
+- **Decoder: bit-exact.** H.264 Constrained Baseline, Main and High (B-frames, CABAC) at 320x240, 640x480, 854x480,
+  1280x720 and 1920x1080, and VP8 at 640x480 to 1080p: NV12 output equals a software decode on every frame (11 clips,
+  422 frames), twice, deterministic. MPEG-2 480p: PSNR 71.8 dB against software (MPEG-2 allows IDCT mismatch, so not
+  bit-exact by design). 1080p H.264 High: 50 frames in 1.36 s (~37 fps, 0.2 s CPU) against 5.0 s with two-thread
+  software decode.
+- **Post-processor (NV12 → YUYV in the decoder's pipeline): needs a driver fix.** The G1 PP takes its input height in
+  macroblocks as 8 bits in register 72 plus a 3-bit extension in register 92 (bits 10:8 of the same count). Mainline
+  shifts the height in *lines* into the extension, so any input of 256 lines or more gets an extension of 1: 640x480 is
+  programmed as 286 MB rows, 1280x720 as 301. The picture is right except the **bottom-left 48 pixels of the last 4
+  lines**: garbage Cr for H.264 (non-deterministic low bits), and for VP8 a damaged reference that every inter frame
+  predicts from (key frames right). 320x240 (extension 0) and, measured, 1920x1080 came out right. With the macroblock
+  count shifted instead all 241 PP frames at 480 and 720 lines and both 1080p clips equal the model. The bug is in the
+  generic G1 post-processor code, not RK3026-specific.
+- **JPEG encode:** works once the encoder's coded `sizeimage` is clamped: GStreamer asked for **32 MiB** per CAPTURE
+  buffer (8192x8192/2, the format's maximum), which a 32-96 MiB CMA area cannot serve. Clamped to the frame (615 024 bytes
+  at 640x480) five JPEGs encode, PSNR Y 34.3 dB.
+- **CMA needed** (default `shared-dma-pool`, `reusable`): 1080p H.264 to NV12 holds 33-46 MiB (each NV12 plus
+  motion-vector buffer 1020 pages, bitstream buffers 765 pages); 1080p through the PP up to **88.5 MiB** (YUYV
+  1920x1088 = 893 pages per buffer, up to 11, plus the decoder's own NV12 buffers). On a 96 MiB area that run hit three
+  `-EBUSY` (not `-ENOMEM`) allocations: free pages existed, but each aligned range held a movable page that would not
+  migrate. They were trailing buffer requests, so decoding went on with fewer buffers and stayed right. At 32 MiB a
+  1080p NV12 decode still ran but left 1.6 MB free and retried on `-EBUSY`. The E-Ink controller's 4 MiB image region stays separate.
+- **Clean unload:** after `rmmod hantro_vpu` no DMA mapping of the device is left (DMA-API debug).
 
 ## RGA (first generation), 0x1010c000
 
@@ -133,6 +186,7 @@ Stopping KOReader's process at idle changed the draw by less than the method res
 
 ## Not checked on the device
 
-- The hardware JPEG decoder and encoder, the VPU's pre/post-processor, H.264 encoding, VP8.
-- Any VPU, RGA, IEP or CIF access under mainline.
+- The hardware JPEG decoder, the VPU's MPEG-4/VC-1 decode and its pre-processor, H.264 encoding, the post-processor's
+  scaling (present in the synthesis word, not used by mainline).
+- Any RGA, IEP or CIF access under mainline.
 - The crypto engine's CTR mode and TDES over DMA, and its RSA unit.
