@@ -704,6 +704,12 @@ the CRU.
   the external DMA path; on the RC2 at a 24 MHz card clock, raw reads stayed at the bus limit (~10 MB/s, the same as PIO),
   the host's interrupts fell from ~830 to ~12 per MiB read, and written data read back intact across 20 runtime
   suspend/resume cycles of the host [CONFIRMED-device].
+- **PL330 interrupts per transfer.** Mainline `pl330` raises one interrupt per scatter-gather segment, so the PL330's
+  interrupt rate follows the physical contiguity of the buffer, not the request size. Measured at a 24 MHz card clock
+  (~10 MB/s on every path): ext4 file reads 47-95 KiB per segment (11-22 IRQ/MiB), vfat 18-26 KiB (40-56 IRQ/MiB), raw
+  buffered reads ~22 KiB (~45 IRQ/MiB), raw `O_DIRECT` 4 KiB (~250 IRQ/MiB, one per user page). The hard-IRQ cost of
+  file reads is 0.4-0.9 % of the CPU; the block softirq (1.8-2.7 %) follows the requests, not the segments. Throughput
+  does not depend on the segment size [CONFIRMED-device].
 - **Runtime PM gates the host's bus clock.** With a GPIO card detect, mainline `dw_mmc` gates both `sclk_sdmmc` (the CIU,
   CLKGATE_CON2 bit 11) and `hclk_sdmmc` (the bus clock, CLKGATE_CON5 bit 10) about 50 ms after the last request, so these
   two gate bits follow the card's activity. A `devmem` read of the host's registers while it is suspended returns bus
