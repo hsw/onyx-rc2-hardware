@@ -207,6 +207,11 @@ For a mainline device tree:
 - **The power-up sequence is stock-written.** Mainline writes none of UPSEQ0/1, DWNSEQ0/1 and has no binding for them; after a
   WAKEUP-low reset the chip reloads TI's defaults, so a mainline kernel would power the panel with TI's order and delays rather than
   stock's 0x39/0x11 [VERIFY which one the panel needs].
+- **The temperature input never moves on this board** [STRONG]: TMST_VALUE reads 0x18 = 24 °C on every read, the conversion
+  itself works (TMST1 0x20 CONV_END, about 25 ms per read), 15 min of CPU load with the book in direct sun left it at 24 °C,
+  stock's `/proc/epdsensor` also says 24, and every one of 2232 mainline scans logged 24. TS sees a fixed voltage: a fixed
+  resistor or an NTC not coupled to anything that warms. So the waveform's 24–27 °C range is always the one used, in stock and
+  mainline; treat 24 °C as "unknown", and run optical A/B tests out of direct sun.
 - VCOM: mainline reads 166 as 1.66 V and does not touch the EEPROM; leave `regulator-min/max-microvolt` off the `vcom` node so the
   kernel does not change it.
 - GPIO2_C0 (VCOM_CTRL) is a GPIO output **high** at idle; during updates stock switches it to the EBC_VCOM function. Giving it to

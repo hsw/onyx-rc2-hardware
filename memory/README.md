@@ -76,6 +76,14 @@ Confidence marks on this page:
   AXI clock `aclk_lcdc1_src` (CLKSEL_CON31) ([`../soc/README.md`](../soc/README.md) §3.6) [CONFIRMED-device]. Its QoS port
   is 0x1012f080. It has no underrun status: the driver sees a complete scan (38 of 38 frames, 454 ms) also
   when the glass shows garbage [CONFIRMED-device].
+  Its image memory may sit in a `reusable` CMA region (2026-11-03, mainline): a 4 MiB region whose free pages hold movable
+  page cache until the driver allocates its two frames there. With `CmaFree` driven to 0 by a page-cache fill the pictures
+  stayed bit-for-bit right, and after an unbind/bind under that pressure the frames were allocated in the region again
+  (migration works) [CONFIRMED-device]. Two placements worked, 0x7f400000 and 0x7f800000; the block has no IOMMU and no
+  documented address window, so any DDR address should do [STRONG]. Placement matters for lowmem: the stock-style 10 MiB
+  `no-map` carve-out at 0x7f500000 is not 2 MiB aligned, so the kernel drops RAM from the rounded-down block end
+  (`Ignoring RAM at 0x7f400000-0x80000000`); a 4 MiB-aligned region (CMA needs that alignment) moves the cut to 0x7fe00000,
+  below the waveform's own `no-map` area at 0x7ff00000, and `MemTotal` grows from 492 556 to 502 688 kB [CONFIRMED-device].
 
 ## 2. NoC QoS generators
 

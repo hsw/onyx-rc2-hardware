@@ -91,6 +91,10 @@ the stock frame time give [CONFIRMED-device for frame counts and frame time]:
 At 85 Hz the RC2 counts give 259 ms and 447 ms: the R110 file has the frame counts behind E Ink's published times. A2 (10
 frames) and DU4 (24 frames) are not in the manual.
 
+Measured under mainline (2026-11-01): the median time from an update's submission event to its completion event is
+126.2 ms for A2, 269.7 ms for DU and 461.1 ms for GC16, against waveform times (frames × frame time) of 119, 263 and 454 ms
+[CONFIRMED-device]. Everything around the scan adds about 7 ms per update.
+
 ## 2. Logic level and supplies
 
 | | Kindle (1448×1072 Carta panels) | RC2 |
