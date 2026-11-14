@@ -149,6 +149,25 @@ Mainline, `lima` with Mesa 25.0.7:
   on a reader. The same-pixmap path is GPU-bound (PP 80–86 % busy, ~2.9 ms per job pair per 500-pixel op).
 - A whole-buffer cache sync in the E-Ink driver costs +25 ms per full-screen commit (11.0 → 36.2 ms); the picture was
   identical with and without it.
+- **Composition-like pass, measured under mainline** (Mesa 25.0.7; EGL/GBM, headless; a 1072×1448 RGBA8888 source
+  drawn turned into a 1448×1072 target; serial median per frame; every variant checked against a CPU reference)
+  [CONFIRMED-device]:
+  - **Source layout and turn cost nothing.** A linear dumb buffer of the E-Ink device, linear or 16×16 u-interleaved
+    GBM buffers, and a lima-owned texture all take 6.6 ms at 384 MHz into an R8 target (1.63 cycles per output
+    pixel), at 0°, 90° and 270° alike.
+  - **The plain pass is memory-bound:** 8.1–8.8 ms at 192 MHz, only 1.3× slower for half the clock (~1.2 GB/s of
+    traffic). An RGBA8888 target costs 10.7 ms instead of 6.6 ms.
+  - **The fragment shader is the cost:**
+
+    | Shader (two layers) | PP instructions | 384 MHz | 192 MHz |
+    |---|---|---|---|
+    | `mat4` colour matrix (Android 10's colour-transform path) | 7–8 | 17.3 ms | 33.2 ms |
+    | `vec4(y, y, y, 1.0)` luma, `y = dot(...)` | 4 | 10.9 ms | 19.8 ms |
+    | `vec4(dot(rgb, W))` | 2 | ~8 ms (predicted) | — |
+
+    PP instruction counts are from the driver's shader-db output, the same for Mesa 20.3 and 25.0.7. lowp and
+    uniform weights change nothing.
+  - A fragment shader that leaves components of `gl_FragColor` unwritten crashes Mesa 20.3's PP compiler.
 
 ## Crypto engine, 0x10200000
 
