@@ -228,6 +228,23 @@ at 912 MHz, 0x3115 on ML-RC2 at 600 MHz) [CONFIRMED-device]. For a mainline DT, 
 `arm,tag-latency = <1 1 1>`, `arm,data-latency = <3 1 2>` [property names CONFIRMED-src (ML `cache-l2x0.c`); the values
 STRONG; the effect on the floor VERIFY until measured].
 
+**A turned (transposing) pass costs DRAM, not CPU.** Converting a portrait 1072 × 1448 source into the panel's
+landscape 1448 × 1072 packed 4-bit image, turned 90° or 270° on the way, was measured with NEON code that converts
+source rows to 8-bit grey, transposes 8 × 8 byte tiles in registers and packs nibble pairs (912 MHz, mainline with the
+stock-equivalent L2 setup, full frame, cold cache, median) [CONFIRMED-device]:
+
+| Source | plain rows | turned, strips of 64 source rows | ratio | naive column walk |
+|---|---|---|---|---|
+| XRGB8888 | 7.6 ms | 10.4 ms | 1.38 | 84 ms |
+| RGB565 | 4.9 ms | 8.1 ms | 1.65 | 64 ms |
+| R8 | 2.9 ms | 5.9 ms | 2.0 | 42 ms |
+
+- Taller strips win: XRGB8888 takes 12.0 / 11.8 / 11.1 / 10.4 ms for strips of 8 / 16 / 32 / 64 rows.
+- A column band (a narrow band of panel lines at a time) is 1.7x slower than the strips.
+- `pld` gains ~6 %.
+- The tile arithmetic is cheaper per pixel than the plain row, so the extra time is DRAM page and line traffic. The
+  smaller the source pixel, the larger the relative cost of turning.
+
 ## 6. DDR controller and PHY, stock vs mainline
 
 The stock kernel's 396 MHz set and the mainline SPL that writes it: [`../soc/README.md`](../soc/README.md) §8.1. In the

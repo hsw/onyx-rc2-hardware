@@ -11,7 +11,7 @@ from microSD. Capabilities that only the datasheet states are left out; addresse
 | Block | Base | Stock kernel on the RC2 | Mainline on the RC2 |
 |---|---|---|---|
 | VPU (Hantro VEPU + VDPU, JPEG) | 0x10104000 | driver up, encoder id 0x8270; Gallery decodes H.264 through it, if ION has the memory | **`hantro` works** with an RK3026 variant (decoder at +0x200): H.264 and VP8 bit-exact up to 1080p, MPEG-2 right, post-processor right after a driver fix, JPEG encode; needs ~96 MiB CMA for 1080p through the post-processor |
-| RGA, first generation (2D) | 0x1010c000 | driver up, measured: ~650 MB/s read, no grey (Y8) output, two driver bugs | no driver (mainline `rga` is RGA2+) |
+| RGA, first generation (2D) | 0x1010c000 | driver up, measured: ~650 MB/s read, no grey (Y8) output, two driver bugs; no VERSION register, no YUV-output registers (probed under mainline) | no driver (mainline `rga` is RGA2+) |
 | IPP | — | module loaded, but `/dev/rk29-ipp` is never created: every user falls back to software | — |
 | IEP, CIF | 0x10108000, 0x1010a000 | no driver, never used | clocks gated at idle, nothing else |
 | GPU Mali-400 MP2 | 0x10090000 | vendor `mali`/`ump`, EGL/GLES probed ([`../gpu/README.md`](../gpu/README.md)) | **lima works**: render node, Mesa, glmark2, devfreq 192–384 MHz, glamor |
@@ -103,6 +103,20 @@ bench that copies the 1072×1448 RGBA framebuffer (6.2 MB):
   that is not page-aligned `rga_buf_size_cal` ignores the in-page offset (3 584 wrong bytes). Page-aligned bases plus a
   `y_offset` avoid it.
 - Mainline: mainline's `rockchip-rga` handles RGA2 and later only; nothing ran.
+- **Registers under mainline** (read through `/dev/mem` with `aclk_rga`/`hclk_rga` and their parents
+  `aclk_lcdc0_src`/`aclk_vio0_niu` ungated for the probe and gated again; no job started) [CONFIRMED-device]:
+  - **VERSION (+0x28) reads 0**: this RGA has no version register. The RK312x block's `0x02018632` is absent, and the
+    vendor driver's "1.003" for RK3026 is a constant in its source.
+  - Reset values: every word of +0x000..+0x17c is 0 except +0x014 (AXI ID) = `0x49854210`.
+  - The command words +0x100..+0x164 all hold written values. Field widths from a 0xffffffff write:
+    - source stride (+0x110) 14 bits;
+    - source active size (+0x114) 13 + 13 bits;
+    - tile offsets (+0x130/+0x134) 19 bits;
+    - destination stride/size (+0x150) `0x3fff0fff`;
+    - destination clip (+0x154) `0x7fff0fff`;
+    - the rest 32 bits.
+  - **+0x170 and +0x174 hold nothing.** These are the YUV-output configuration and the chroma destination address on
+    the later RK312x RGA. RK3026's RGA has no YUV or grey output: RGB only, at the register level too.
 
 ## IPP
 
