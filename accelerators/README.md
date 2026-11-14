@@ -163,7 +163,7 @@ Mainline, `lima` with Mesa 25.0.7:
     |---|---|---|---|
     | `mat4` colour matrix (Android 10's colour-transform path) | 7–8 | 17.3 ms | 33.2 ms |
     | `vec4(y, y, y, 1.0)` luma, `y = dot(...)` | 4 | 10.9 ms | 19.8 ms |
-    | `vec4(dot(rgb, W))` | 2 | ~8 ms (predicted) | — |
+    | `vec4(dot(rgb, W))` | 2 | 8.4 ms (Android 10, Mesa 20.3, measured) | — |
 
     PP instruction counts are from the driver's shader-db output, the same for Mesa 20.3 and 25.0.7. lowp and
     uniform weights change nothing.
